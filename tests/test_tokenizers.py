@@ -9,7 +9,7 @@ import sys
 import os
 
 # 添加src目录到Python路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../dev/src'))
 
 def test_tokenizers():
     """测试分词器架构"""
@@ -19,7 +19,7 @@ def test_tokenizers():
     
     try:
         # 导入分词器模块
-        from tokenizers import get_available_tokenizers, get_tokenizer_info, get_tokenizer
+        from text_tokenizers import get_available_tokenizers, get_tokenizer_info, get_tokenizer
         
         print("✓ 分词器模块导入成功")
         
@@ -110,7 +110,7 @@ def test_asr_metrics():
         hypothesis_text = "今天天气很号"
         
         # 获取可用的分词器
-        from tokenizers import get_available_tokenizers
+        from text_tokenizers import get_available_tokenizers
         available_tokenizers = get_available_tokenizers()
         
         if not available_tokenizers:

@@ -16,11 +16,13 @@ ASR字准确率对比工具 - 主程序
 """
 
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import ttk, filedialog, messagebox, scrolledtext
 import os
 import pandas as pd
 import jiwer
 from functools import partial
+import threading
+import queue
 
 # 导入重构后的ASRMetrics类和分词器模块
 from asr_metrics_refactored import ASRMetrics
@@ -63,7 +65,7 @@ class ASRComparisonTool:
         
         # 性能优化：缓存ASRMetrics实例，避免重复创建
         self.asr_metrics_cache = {}
-        
+
         # 创建主框架分为上下两部分
         self.top_frame = ttk.Frame(root)
         self.top_frame.pack(fill=tk.BOTH, expand=False, padx=10, pady=5)  # 固定上部区域高度
@@ -75,13 +77,25 @@ class ASRComparisonTool:
         self.filter_fillers = tk.BooleanVar(value=False)  # 语气词过滤开关
         self.selected_tokenizer = tk.StringVar(value="jieba")  # 默认选择jieba分词器
         self.available_tokenizers = []  # 可用分词器列表
-        
+
         # UI辅助变量
         self.tooltip_window = None  # 提示框窗口对象
-        
+        self.status_var = tk.StringVar(value="准备就绪")
+        self.progress_var = tk.DoubleVar(value=0.0)
+        self.row_summary_var = tk.StringVar(value="请选择一条结果查看详情")
+        self.summary_var = tk.StringVar(value="尚未计算统计结果")
+        self.result_item_map = {}
+        self.current_result = None
+
+        # 异步计算相关变量
+        self.calculation_thread = None  # 计算线程
+        self.result_queue = queue.Queue()  # 结果队列
+        self.cancel_event = threading.Event()  # 取消事件
+        self.is_calculating = False  # 是否正在计算
+
         # 初始化分词器列表
         self._init_tokenizers()
-        
+
         # 初始化UI组件
         self._init_ui()
     
@@ -153,6 +167,23 @@ class ASRComparisonTool:
             width=10
         )
         self.tokenizer_info_btn.pack(side=tk.LEFT, padx=(10, 10))
+
+        self.clear_cache_btn = ttk.Button(
+            self.tokenizer_selection_frame,
+            text="清理缓存",
+            command=self.handle_clear_cache,
+            width=10
+        )
+        self.clear_cache_btn.pack(side=tk.LEFT, padx=(0, 0))
+
+        self.tokenizer_hint_label = ttk.Label(
+            self.tokenizer_frame,
+            text="",
+            foreground="#555555",
+            anchor="w",
+            wraplength=560
+        )
+        self.tokenizer_hint_label.pack(fill=tk.X, padx=15, pady=(0, 5))
         
         # 更新分词器状态
         self.update_tokenizer_status()
@@ -205,30 +236,29 @@ class ASRComparisonTool:
         # 创建单一控制框架，将统计按钮和过滤勾选框放在同一行
         self.control_frame = ttk.Frame(self.top_frame)
         self.control_frame.pack(fill=tk.X, pady=5)
-        
-        # 创建按钮容器框架
-        self.btn_container = ttk.Frame(self.control_frame)
-        self.btn_container.pack(side=tk.TOP, fill=tk.X)
-        
-        # 统计按钮 - 居中对齐
-        self.calculate_btn = ttk.Button(self.btn_container, text="开始统计", command=self.calculate_accuracy, width=15)
-        self.calculate_btn.pack(side=tk.TOP, pady=5)
-        
-        # 语气词过滤开关 - 调整位置到右侧，并与"开始统计"按钮垂直居中对齐
-        self.filter_frame = ttk.Frame(self.control_frame)
-        # 使用place布局，设置rely=0.5使其垂直居中，anchor=E使其靠右对齐
-        self.filter_frame.place(relx=1.0, rely=0.5, anchor=tk.E, x=-20)
-        
+
+        self.action_frame = ttk.Frame(self.control_frame)
+        self.action_frame.pack(fill=tk.X)
+
+        self.calculate_btn = ttk.Button(self.action_frame, text="开始统计", command=self.calculate_accuracy, width=15)
+        self.calculate_btn.pack(side=tk.LEFT, pady=5, padx=(0, 10))
+
+        # 添加取消按钮
+        self.cancel_btn = ttk.Button(self.action_frame, text="取消计算", command=self.cancel_calculation, width=15, state=tk.DISABLED)
+        self.cancel_btn.pack(side=tk.LEFT, pady=5, padx=(0, 10))
+
+        self.filter_frame = ttk.Frame(self.action_frame)
+        self.filter_frame.pack(side=tk.RIGHT, pady=5)
+
         self.filter_check = ttk.Checkbutton(
-            self.filter_frame, 
-            text="语气词过滤", 
+            self.filter_frame,
+            text="语气词过滤",
             variable=self.filter_fillers,
             onvalue=True,
             offvalue=False
         )
         self.filter_check.pack(side=tk.LEFT)
-        
-        # 为语气词过滤开关添加提示信息
+
         filter_tooltip = tk.Label(self.filter_frame, text="?", font=("Arial", 9, "bold"), fg="blue")
         filter_tooltip.pack(side=tk.LEFT, padx=3)
         
@@ -287,6 +317,20 @@ class ASRComparisonTool:
                     self.root.unbind("<Motion>")
         
         filter_tooltip.bind("<Enter>", show_tooltip)
+
+        self.progress_bar = ttk.Progressbar(
+            self.control_frame,
+            variable=self.progress_var,
+            maximum=1.0
+        )
+        self.progress_bar.pack(fill=tk.X, padx=10, pady=(5, 0))
+
+        self.status_label = ttk.Label(
+            self.control_frame,
+            textvariable=self.status_var,
+            anchor="w"
+        )
+        self.status_label.pack(fill=tk.X, padx=12, pady=(2, 0))
         
         # 下半部分 - 结果显示区域
         self.result_frame = ttk.LabelFrame(self.bottom_frame, text="字准确率统计结果")
@@ -307,7 +351,58 @@ class ASRComparisonTool:
                 self.result_tree.column(col, width=100, anchor="center")
         
         self.result_tree.pack(fill=tk.BOTH, expand=True)
-        
+        self.result_tree.bind("<<TreeviewSelect>>", self.on_result_select)
+
+        self.detail_notebook = ttk.Notebook(self.result_frame)
+        self.detail_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=(0, 5))
+
+        # 差异高亮视图
+        self.diff_frame = ttk.Frame(self.detail_notebook)
+        self.diff_frame.columnconfigure(0, weight=1)
+        self.diff_frame.columnconfigure(1, weight=1)
+
+        ttk.Label(self.diff_frame, text="标注文本", anchor="center").grid(row=0, column=0, sticky="ew", padx=5, pady=(5, 0))
+        ttk.Label(self.diff_frame, text="ASR文本", anchor="center").grid(row=0, column=1, sticky="ew", padx=5, pady=(5, 0))
+
+        self.diff_ref_text = scrolledtext.ScrolledText(self.diff_frame, height=8, wrap=tk.WORD)
+        self.diff_ref_text.grid(row=1, column=0, sticky="nsew", padx=5, pady=5)
+        self.diff_ref_text.configure(state=tk.DISABLED, font=("Courier New", 11))
+
+        self.diff_hyp_text = scrolledtext.ScrolledText(self.diff_frame, height=8, wrap=tk.WORD)
+        self.diff_hyp_text.grid(row=1, column=1, sticky="nsew", padx=5, pady=5)
+        self.diff_hyp_text.configure(state=tk.DISABLED, font=("Courier New", 11))
+
+        self.detail_notebook.add(self.diff_frame, text="差异高亮")
+
+        # 单条错误明细
+        self.row_detail_frame = ttk.Frame(self.detail_notebook)
+        self.row_detail_label = ttk.Label(
+            self.row_detail_frame,
+            textvariable=self.row_summary_var,
+            justify=tk.LEFT,
+            anchor="nw"
+        )
+        self.row_detail_label.pack(fill=tk.BOTH, expand=True, padx=12, pady=10)
+        self.detail_notebook.add(self.row_detail_frame, text="单条明细")
+
+        # 差异序列
+        self.sequence_frame = ttk.Frame(self.detail_notebook)
+        self.diff_sequence_text = scrolledtext.ScrolledText(self.sequence_frame, height=8, wrap=tk.WORD)
+        self.diff_sequence_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.diff_sequence_text.configure(state=tk.DISABLED, font=("Courier New", 11))
+        self.detail_notebook.add(self.sequence_frame, text="差异序列")
+
+        # 总体统计
+        self.summary_frame = ttk.Frame(self.detail_notebook)
+        self.summary_label = ttk.Label(
+            self.summary_frame,
+            textvariable=self.summary_var,
+            justify=tk.LEFT,
+            anchor="nw"
+        )
+        self.summary_label.pack(fill=tk.BOTH, expand=True, padx=12, pady=10)
+        self.detail_notebook.add(self.summary_frame, text="整体统计")
+
         # 创建导出按钮的容器框架用于居中对齐
         self.export_frame = ttk.Frame(self.bottom_frame)
         self.export_frame.pack(fill=tk.X, pady=10)
@@ -336,53 +431,77 @@ class ASRComparisonTool:
         """
         tokenizer_name = self.selected_tokenizer.get()
         try:
-            # 性能优化：使用缓存的信息避免重复检测
             info = get_tokenizer_info(tokenizer_name)
+            hint_text = ""
+
             if info.get('available', False):
-                # 分词器可用，显示绿色状态
                 version = info.get('version', 'unknown')
                 status_text = f"✓ {tokenizer_name} (v{version})"
                 if tokenizer_name in self.asr_metrics_cache:
-                    status_text += " [已缓存]"  # 标记已缓存的分词器
+                    status_text += " [已缓存]"
                 self.tokenizer_status_label.config(
                     text=status_text,
                     foreground="green"
                 )
+
+                if info.get('note'):
+                    hint_text = info['note']
+                elif tokenizer_name == 'hanlp':
+                    hint_text = "HanLP首次使用需下载模型，下载过程可能较慢，请保持网络畅通。"
+                elif tokenizer_name == 'thulac':
+                    hint_text = "如提示缺少THULAC库，请先执行 pip install thulac。"
+                else:
+                    hint_text = info.get('description', '')
             else:
-                # 分词器不可用，显示红色错误状态
                 error_msg = info.get('error', '未知错误')
                 self.tokenizer_status_label.config(
                     text=f"✗ {tokenizer_name} - {error_msg[:20]}...",
                     foreground="red"
                 )
+                hint_text = error_msg
+
+            if hasattr(self, 'tokenizer_hint_label'):
+                self.tokenizer_hint_label.config(text=hint_text)
         except Exception as e:
             # 获取信息失败，显示错误状态
             self.tokenizer_status_label.config(
                 text=f"✗ {tokenizer_name} - 获取信息失败",
                 foreground="red"
             )
+            if hasattr(self, 'tokenizer_hint_label'):
+                self.tokenizer_hint_label.config(text=str(e))
     
     def clear_tokenizer_cache(self):
         """
         清理分词器缓存
         释放内存，清除所有已缓存的分词器实例
+
+        Returns:
+            tuple: (是否成功, 错误信息)
         """
-        print("正在清理分词器缓存...")
-        
-        # 清理ASRMetrics实例缓存
         self.asr_metrics_cache.clear()
-        
-        # 清理工厂类缓存
+
         try:
             from text_tokenizers.tokenizers.factory import TokenizerFactory
             TokenizerFactory.clear_cache()
-            print("工厂类缓存已清理")
+            success = True
+            error_msg = ""
         except Exception as e:
-            print(f"清理工厂类缓存失败: {str(e)}")
-        
-        # 更新界面状态显示
+            success = False
+            error_msg = str(e)
+
         self.update_tokenizer_status()
-        print("缓存清理完成，状态已更新")
+        return success, error_msg
+
+    def handle_clear_cache(self):
+        """处理缓存清理按钮点击"""
+        success, error_msg = self.clear_tokenizer_cache()
+        if success:
+            self.status_var.set("分词器缓存已清理")
+            messagebox.showinfo("提示", "分词器缓存已清理。")
+        else:
+            self.status_var.set("缓存清理失败")
+            messagebox.showwarning("警告", f"缓存清理失败: {error_msg}")
     
     def show_tokenizer_info(self):
         """
@@ -613,88 +732,338 @@ class ASRComparisonTool:
         # 按Y坐标排序，返回文件路径列表
         return [file_items[y] for y in sorted(file_items.keys())]
 
+    def on_result_select(self, event=None):
+        """结果列表选择变更时更新详情视图"""
+        selection = self.result_tree.selection()
+        if not selection:
+            self.current_result = None
+            self.update_detail_views(None)
+            return
+
+        item_id = selection[0]
+        result = self.result_item_map.get(item_id)
+        self.current_result = result
+        self.update_detail_views(result)
+
+    def update_detail_views(self, result):
+        """根据结果更新差异视图与统计信息"""
+        if not result:
+            self._set_text_widget(self.diff_ref_text, "")
+            self._set_text_widget(self.diff_hyp_text, "")
+            self._set_text_widget(self.diff_sequence_text, "")
+            self.row_summary_var.set("请选择一条结果查看详情")
+            return
+
+        metrics = result.get('details', {})
+        diff_ref = result.get('diff_reference', '')
+        diff_hyp = result.get('diff_hypothesis', '')
+        diff_sequence = result.get('diff_sequence', '')
+
+        row_lines = [
+            f"ASR文件: {result.get('asr_file', '')}",
+            f"标注文件: {result.get('ref_file', '')}",
+            f"分词器: {result.get('tokenizer', '未知')}",
+            f"准确率: {metrics.get('accuracy', 0.0):.4f}",
+            f"CER: {metrics.get('cer', 0.0):.4f}",
+            f"替换: {metrics.get('substitutions', 0)}    删除: {metrics.get('deletions', 0)}    插入: {metrics.get('insertions', 0)}",
+            f"命中: {metrics.get('hits', 0)}",
+            f"标注字数: {metrics.get('ref_length', 0)}    ASR字数: {metrics.get('hyp_length', 0)}",
+            f"语气词过滤: {'启用' if result.get('filter_fillers') else '关闭'}"
+        ]
+
+        self.row_summary_var.set("\n".join(row_lines))
+        self._set_text_widget(self.diff_ref_text, diff_ref)
+        self._set_text_widget(self.diff_hyp_text, diff_hyp)
+        self._set_text_widget(self.diff_sequence_text, diff_sequence)
+
+    def _set_text_widget(self, widget, content):
+        """更新文本组件内容并保持只读"""
+        widget.config(state=tk.NORMAL)
+        widget.delete("1.0", tk.END)
+        widget.insert(tk.END, content)
+        widget.config(state=tk.DISABLED)
+
     def calculate_accuracy(self):
         """
-        计算字准确率
-        主要计算流程：
-        1. 验证文件配对
-        2. 初始化分词器
-        3. 逐对计算准确率
-        4. 更新结果显示
+        异步计算字准确率 - 入口方法
+        启动后台线程进行计算，保持UI响应性
         """
-        # 清空之前的计算结果
+        # 如果正在计算，提示用户
+        if self.is_calculating:
+            messagebox.showwarning("警告", "计算正在进行中，请先取消当前计算。")
+            return
+        
+        # 清空结果
         for item in self.result_tree.get_children():
             self.result_tree.delete(item)
-        
+        self.result_item_map.clear()
         self.results = []
-        
-        # 获取当前文件排序
+        self.current_result = None
+        self.update_detail_views(None)
+        self.row_summary_var.set("请选择一条结果查看详情")
+        self.summary_var.set("尚未生成整体统计")
+
+        # 获取文件列表
         sorted_asr_files = self.get_file_order(self.asr_canvas)
         sorted_ref_files = self.get_file_order(self.ref_canvas)
-        
-        # 验证文件数量匹配
+
+        # 验证文件
         if len(sorted_asr_files) != len(sorted_ref_files):
             messagebox.showerror("错误", "ASR文件和标注文件数量不匹配！")
             return
-        
+
+        if not sorted_asr_files:
+            self.status_var.set("请先选择ASR与标注文件后再计算")
+            messagebox.showinfo("提示", "请先选择ASR与标注文件。")
+            return
+
         # 获取用户设置
-        filter_fillers = self.filter_fillers.get()  # 语气词过滤设置
-        tokenizer_name = self.selected_tokenizer.get()  # 选择的分词器
+        filter_fillers = self.filter_fillers.get()
+        tokenizer_name = self.selected_tokenizer.get()
+
+        # 配置进度条
+        total_pairs = len(sorted_asr_files)
+        self.progress_bar.configure(maximum=max(total_pairs, 1))
+        self.progress_var.set(0)
+
+        # 准备数据
+        file_pairs = list(zip(sorted_asr_files, sorted_ref_files))
         
+        # 清空结果队列
+        while not self.result_queue.empty():
+            try:
+                self.result_queue.get_nowait()
+            except queue.Empty:
+                break
+        
+        # 清除取消事件
+        self.cancel_event.clear()
+        
+        # 更新UI状态
+        self.is_calculating = True
+        self.calculate_btn.config(state=tk.DISABLED)
+        self.cancel_btn.config(state=tk.NORMAL)
+        self.status_var.set("正在初始化分词器...")
+        
+        # 启动后台计算线程
+        self.calculation_thread = threading.Thread(
+            target=self._calculate_worker,
+            args=(file_pairs, tokenizer_name, filter_fillers, total_pairs),
+            daemon=True
+        )
+        self.calculation_thread.start()
+        
+        # 启动UI更新定时器
+        self.root.after(100, self._check_results)
+    
+    def _calculate_worker(self, file_pairs, tokenizer_name, filter_fillers, total_pairs):
+        """
+        后台计算工作线程
+        在独立线程中执行耗时的计算任务
+        
+        Args:
+            file_pairs: 文件对列表 [(asr_file, ref_file), ...]
+            tokenizer_name: 分词器名称
+            filter_fillers: 是否过滤语气词
+            total_pairs: 总文件对数
+        """
         try:
-            # 性能优化：使用缓存的ASRMetrics实例
+            # 初始化分词器
             if tokenizer_name not in self.asr_metrics_cache:
-                print(f"初始化{tokenizer_name}分词器...")
+                self.result_queue.put(('status', f"正在加载{tokenizer_name}分词器..."))
                 self.asr_metrics_cache[tokenizer_name] = ASRMetrics(tokenizer_name=tokenizer_name)
             
             asr_metrics = self.asr_metrics_cache[tokenizer_name]
             
-            # 逐对计算字准确率
-            for asr_file, ref_file in zip(sorted_asr_files, sorted_ref_files):
+            # 逐对处理文件
+            for index, (asr_file, ref_file) in enumerate(file_pairs, start=1):
+                # 检查是否被取消
+                if self.cancel_event.is_set():
+                    self.result_queue.put(('cancelled', None))
+                    return
+                
                 try:
-                    # 读取文件内容（支持多种编码）
+                    # 读取文件
                     asr_text = self.read_file_with_multiple_encodings(asr_file)
                     ref_text = self.read_file_with_multiple_encodings(ref_file)
                     
-                    # 计算详细指标
+                    # 计算指标
                     metrics = asr_metrics.calculate_detailed_metrics(ref_text, asr_text, filter_fillers)
+                    diff_ref, diff_hyp = asr_metrics.highlight_errors(ref_text, asr_text, filter_fillers)
+                    diff_sequence = asr_metrics.show_differences(ref_text, asr_text, filter_fillers)
                     
-                    # 提取计算结果
-                    accuracy = metrics['accuracy']
-                    ref_chars = metrics['ref_length']
-                    asr_chars = metrics['hyp_length']
-                    used_tokenizer = metrics.get('tokenizer', tokenizer_name)
-                    
-                    # 构建结果数据
+                    # 构建结果
                     result = {
                         "asr_file": os.path.basename(asr_file),
                         "ref_file": os.path.basename(ref_file),
-                        "asr_chars": asr_chars,
-                        "ref_chars": ref_chars,
-                        "accuracy": accuracy,
-                        "details": metrics,  # 保存详细指标供后续使用
-                        "filter_fillers": filter_fillers,  # 记录语气词过滤状态
-                        "tokenizer": used_tokenizer  # 记录使用的分词器
+                        "asr_chars": metrics['hyp_length'],
+                        "ref_chars": metrics['ref_length'],
+                        "accuracy": metrics['accuracy'],
+                        "details": metrics,
+                        "filter_fillers": filter_fillers,
+                        "tokenizer": metrics.get('tokenizer', tokenizer_name),
+                        "diff_reference": diff_ref,
+                        "diff_hypothesis": diff_hyp,
+                        "diff_sequence": diff_sequence
                     }
                     
-                    self.results.append(result)
-                    
-                    # 添加到结果表格显示
-                    self.result_tree.insert("", "end", values=(
-                        result["asr_file"],
-                        result["ref_file"],
-                        result["asr_chars"],
-                        result["ref_chars"],
-                        f"{result['accuracy']:.4f}",
-                        "是" if filter_fillers else "否",
-                        used_tokenizer
-                    ))
+                    # 发送进度和结果
+                    self.result_queue.put(('progress', index, total_pairs, result, None))
                     
                 except Exception as e:
-                    messagebox.showerror("错误", f"处理文件时出错: {str(e)}")
-                    
+                    # 发送错误信息（但不中断处理）
+                    error_info = {
+                        'asr_file': os.path.basename(asr_file),
+                        'ref_file': os.path.basename(ref_file),
+                        'error': str(e)
+                    }
+                    self.result_queue.put(('progress', index, total_pairs, None, error_info))
+            
+            # 所有文件处理完成
+            self.result_queue.put(('complete', None))
+            
         except Exception as e:
-            messagebox.showerror("错误", f"初始化分词器失败: {str(e)}")
+            # 严重错误（如分词器初始化失败）
+            self.result_queue.put(('error', str(e)))
+    
+    def _check_results(self):
+        """
+        定时检查结果队列并更新UI
+        在主线程中执行，安全地更新GUI组件
+        """
+        try:
+            # 处理队列中的所有消息
+            while True:
+                try:
+                    message = self.result_queue.get_nowait()
+                    msg_type = message[0]
+                    
+                    if msg_type == 'status':
+                        # 状态更新
+                        status_text = message[1]
+                        self.status_var.set(status_text)
+                    
+                    elif msg_type == 'progress':
+                        # 进度更新
+                        index, total, result, error = message[1], message[2], message[3], message[4]
+                        
+                        if error:
+                            # 处理错误（但继续）
+                            self.status_var.set(f"处理失败: {error['asr_file']} - {error['error'][:50]}")
+                        elif result:
+                            # 添加结果到表格
+                            self.results.append(result)
+                            item_id = self.result_tree.insert(
+                                "",
+                                "end",
+                                values=(
+                                    result["asr_file"],
+                                    result["ref_file"],
+                                    result["asr_chars"],
+                                    result["ref_chars"],
+                                    f"{result['accuracy']:.4f}",
+                                    "是" if result['filter_fillers'] else "否",
+                                    result['tokenizer']
+                                )
+                            )
+                            self.result_item_map[item_id] = result
+                            self.status_var.set(f"处理中: {index}/{total}")
+                        
+                        # 更新进度条
+                        self.progress_var.set(index)
+                    
+                    elif msg_type == 'complete':
+                        # 计算完成
+                        self._finalize_calculation()
+                        return  # 停止检查
+                    
+                    elif msg_type == 'cancelled':
+                        # 被取消
+                        self._finalize_calculation(cancelled=True)
+                        return
+                    
+                    elif msg_type == 'error':
+                        # 严重错误
+                        error_msg = message[1]
+                        messagebox.showerror("错误", f"计算过程出错: {error_msg}")
+                        self._finalize_calculation(error=True)
+                        return
+                
+                except queue.Empty:
+                    break
+        
+        except Exception as e:
+            print(f"检查结果时出错: {str(e)}")
+        
+        # 如果还在计算，继续检查
+        if self.is_calculating:
+            self.root.after(100, self._check_results)
+    
+    def _finalize_calculation(self, cancelled=False, error=False):
+        """
+        完成计算，更新UI状态和统计信息
+        
+        Args:
+            cancelled: 是否被取消
+            error: 是否出错
+        """
+        # 重置状态
+        self.is_calculating = False
+        self.calculate_btn.config(state=tk.NORMAL)
+        self.cancel_btn.config(state=tk.DISABLED)
+        
+        if cancelled:
+            self.status_var.set("计算已取消")
+            return
+        
+        if error:
+            self.status_var.set("计算失败")
+            return
+        
+        # 计算统计信息
+        if self.results:
+            total_accuracy = sum(r['accuracy'] for r in self.results)
+            avg_accuracy = total_accuracy / len(self.results)
+            
+            total_subs = sum(r['details'].get('substitutions', 0) for r in self.results)
+            total_dels = sum(r['details'].get('deletions', 0) for r in self.results)
+            total_ins = sum(r['details'].get('insertions', 0) for r in self.results)
+            total_ref_chars = sum(r['ref_chars'] for r in self.results)
+            total_hyp_chars = sum(r['asr_chars'] for r in self.results)
+            
+            total_errors = total_subs + total_dels + total_ins
+            overall_accuracy = 1.0 - (total_errors / total_ref_chars) if total_ref_chars > 0 else 0.0
+            
+            summary_lines = [
+                f"处理文件对: {len(self.results)}",
+                f"平均准确率: {avg_accuracy:.4f}",
+                f"总体准确率: {overall_accuracy:.4f}",
+                f"标注字数: {total_ref_chars}    ASR字数: {total_hyp_chars}",
+                f"替换: {total_subs}    删除: {total_dels}    插入: {total_ins}"
+            ]
+            self.summary_var.set("\n".join(summary_lines))
+            
+            # 选中第一项
+            first_item = self.result_tree.get_children()
+            if first_item:
+                self.result_tree.selection_set(first_item[0])
+                self.result_tree.focus(first_item[0])
+                self.on_result_select()
+            
+            self.status_var.set(f"计算完成，成功处理 {len(self.results)} 个文件对")
+        else:
+            self.summary_var.set("未成功计算任何文件对")
+            self.status_var.set("计算完成，但没有成功的结果")
+    
+    def cancel_calculation(self):
+        """
+        取消正在进行的计算
+        """
+        if self.is_calculating:
+            self.cancel_event.set()
+            self.status_var.set("正在取消计算...")
+            self.cancel_btn.config(state=tk.DISABLED)
+
 
     def read_file_with_multiple_encodings(self, file_path):
         """

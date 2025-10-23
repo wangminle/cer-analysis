@@ -4,8 +4,13 @@
 验证所有分词器和核心功能是否正常工作
 """
 
+import sys
+import os
+# 添加src目录到Python路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../dev/src'))
+
 from asr_metrics_refactored import ASRMetrics
-from tokenizers import get_available_tokenizers, get_tokenizer, get_tokenizer_info
+from text_tokenizers import get_available_tokenizers, get_tokenizer, get_tokenizer_info
 
 def test_tokenizers():
     """测试所有可用的分词器"""

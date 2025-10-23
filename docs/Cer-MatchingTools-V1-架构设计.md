@@ -192,7 +192,7 @@ class BatchProcessor:
 
 ### 3.3 UI控制器层技术架构
 
-#### 3.3.1 事件驱动架构
+#### 3.3.1 事件驱动架构与异步计算模型
 ```python
 class EventDispatcher:
     """事件分发器"""
@@ -217,6 +217,60 @@ class EventDispatcher:
         while not self.event_queue.empty():
             event = self.event_queue.get()
             self.dispatch_event(event)
+
+class AsyncCalculationController:
+    """异步计算控制器（P2改进）"""
+    
+    def __init__(self):
+        self.calculation_thread = None
+        self.result_queue = queue.Queue()
+        self.cancel_event = threading.Event()
+        self.is_calculating = False
+        
+    def start_calculation(self, worker_func, *args, **kwargs):
+        """启动后台计算线程"""
+        self.cancel_event.clear()
+        self.is_calculating = True
+        
+        self.calculation_thread = threading.Thread(
+            target=worker_func,
+            args=args,
+            kwargs=kwargs,
+            daemon=True
+        )
+        self.calculation_thread.start()
+        
+        # 启动结果检查循环
+        self.check_results()
+        
+    def check_results(self):
+        """主线程定期检查结果队列"""
+        try:
+            while True:
+                message = self.result_queue.get_nowait()
+                self.handle_message(message)
+        except queue.Empty:
+            pass
+            
+        if self.is_calculating:
+            # 100ms后再次检查
+            self.root.after(100, self.check_results)
+            
+    def cancel_calculation(self):
+        """取消计算"""
+        self.cancel_event.set()
+        
+    def handle_message(self, message):
+        """处理消息"""
+        msg_type, data = message
+        if msg_type == 'progress':
+            self.update_progress(data)
+        elif msg_type == 'complete':
+            self.finalize_calculation()
+        elif msg_type == 'error':
+            self.handle_error(data)
+        elif msg_type == 'cancelled':
+            self.handle_cancellation()
 ```
 
 #### 3.3.2 状态管理器
@@ -914,8 +968,100 @@ class EncodingDetector:
 
 ### 6.2 数据处理层架构
 
-#### 6.2.1 数据转换管道
+#### 6.2.1 数据转换管道与预处理流水线（P2改进）
 ```python
+from abc import ABC, abstractmethod
+from typing import List
+
+class PreprocessingStep(ABC):
+    """预处理步骤抽象基类"""
+    
+    @abstractmethod
+    def process(self, text: str) -> str:
+        """处理文本"""
+        pass
+    
+    @abstractmethod
+    def get_name(self) -> str:
+        """获取步骤名称"""
+        pass
+
+class PreprocessingPipeline:
+    """预处理流水线（P2新增）"""
+    
+    def __init__(self, steps: List[PreprocessingStep]):
+        """
+        初始化流水线
+        
+        Args:
+            steps: 预处理步骤列表，按顺序执行
+        """
+        self.steps = steps
+        
+    def process(self, text: str) -> str:
+        """
+        执行预处理流水线
+        
+        Args:
+            text: 输入文本
+            
+        Returns:
+            处理后的文本
+        """
+        result = text
+        for step in self.steps:
+            result = step.process(result)
+        return result
+    
+    def add_step(self, step: PreprocessingStep):
+        """动态添加处理步骤"""
+        self.steps.append(step)
+        
+    def get_pipeline_info(self) -> str:
+        """获取流水线信息"""
+        step_names = [step.get_name() for step in self.steps]
+        return " -> ".join(step_names)
+
+# 具体实现示例
+class RemovePunctuationStep(PreprocessingStep):
+    """移除标点符号步骤"""
+    
+    def process(self, text: str) -> str:
+        import string
+        return text.translate(str.maketrans('', '', string.punctuation + '。，、；：？！…—·「」『』【】《》〈〉""''（）'))
+    
+    def get_name(self) -> str:
+        return "移除标点符号"
+
+class NormalizeWidthStep(PreprocessingStep):
+    """宽度标准化步骤"""
+    
+    def process(self, text: str) -> str:
+        import unicodedata
+        return unicodedata.normalize('NFKC', text)
+    
+    def get_name(self) -> str:
+        return "宽度标准化"
+
+def get_preset_pipeline(preset_name: str) -> PreprocessingPipeline:
+    """
+    获取预设流水线配置
+    
+    Args:
+        preset_name: 预设名称（'minimal', 'standard', 'aggressive', 'custom_asr', 'research'）
+        
+    Returns:
+        配置好的预处理流水线
+    """
+    presets = {
+        'minimal': [NormalizeWidthStep(), StripWhitespaceStep()],
+        'standard': [NormalizeWidthStep(), RemovePunctuationStep(), RemoveMultipleSpacesStep(), StripWhitespaceStep()],
+        'aggressive': [NormalizeWidthStep(), NormalizeNumbersStep(), RemovePunctuationStep(), RemoveMultipleSpacesStep(), StripWhitespaceStep()],
+    }
+    
+    steps = presets.get(preset_name, presets['standard'])
+    return PreprocessingPipeline(steps)
+
 class DataProcessor:
     """数据处理管道"""
     
@@ -1387,7 +1533,7 @@ class DIContainer:
 
 ---
 
-**文档版本**：V1.3  
-**最后更新时间**：2025-07-24 18:33  
-**更新说明**：[采用技术层次切分法重构，从前端-后端-算法-API技术角度重新组织架构设计]  
+**文档版本**：V1.4  
+**最后更新时间**：2025-10-23 14:58  
+**更新说明**：[P2任务完成：添加异步计算控制器架构和预处理流水线设计]  
 **维护人员**：开发团队 

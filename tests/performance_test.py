@@ -5,9 +5,15 @@
 测试优化前后的性能差异
 """
 
+import sys
+import os
+# 添加src目录到Python路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../dev/src'))
+
 import time
 from asr_metrics_refactored import ASRMetrics
-from tokenizers import get_available_tokenizers, TokenizerFactory
+from text_tokenizers import get_available_tokenizers
+from text_tokenizers.tokenizers.factory import TokenizerFactory
 
 def performance_test():
     """性能测试主函数"""

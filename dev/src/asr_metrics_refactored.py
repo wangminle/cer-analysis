@@ -6,6 +6,7 @@
 import jiwer
 import difflib
 import re
+import unicodedata
 from typing import List, Tuple, Dict, Any, Optional
 
 # 导入分词器模块
@@ -119,29 +120,40 @@ class ASRMetrics:
                 result = result.replace(filler, "")
             return result
     
-    def normalize_chinese_text(self, text: str) -> str:
+    def normalize_chinese_text(self, text: str, 
+                              normalize_width: bool = True,
+                              normalize_numbers: bool = False,
+                              remove_punctuation: bool = True) -> str:
         """
         针对中文特性的标准化处理
         
         Args:
             text (str): 输入中文文本
+            normalize_width (bool): 是否统一全/半角字符，使用Unicode NFKC标准化
+            normalize_numbers (bool): 是否将数字归一为'0'
+            remove_punctuation (bool): 是否移除标点符号
             
         Returns:
             str: 标准化后的文本
         """
-        # 移除标点符号
-        text = re.sub(r'[^\w\s]', '', text)
+        # 可选：移除标点符号
+        if remove_punctuation:
+            text = re.sub(r'[^\w\s]', '', text)
         
-        # 统一全角/半角字符
-        full_width = "".join(chr(0xff00 + ord(c) - 0x20) if ord(c) <= 0x7f else c for c in text)
+        # 统一全角/半角字符 - 使用Unicode标准化方法（NFKC）
+        # NFKC = Normalization Form Compatibility Composition
+        # 这是更标准和可靠的全/半角统一方法
+        if normalize_width:
+            text = unicodedata.normalize('NFKC', text)
         
-        # 统一数字格式
-        normalized_text = re.sub(r'[0-9０-９]+', '0', full_width)
+        # 可选：统一数字格式
+        if normalize_numbers:
+            text = re.sub(r'[0-9０-９]+', '0', text)
         
         # 统一空格处理
-        normalized_text = re.sub(r'\s+', '', normalized_text)
+        text = re.sub(r'\s+', '', text)
         
-        return normalized_text
+        return text
     
     def get_character_positions(self, text: str) -> List[Tuple[str, int]]:
         """
@@ -305,6 +317,81 @@ class ASRMetrics:
         
         return matrix[len(s1)][len(s2)]
     
+    def _calculate_edit_ops_with_backtrack(self, s1: str, s2: str) -> Tuple[int, int, int]:
+        """
+        使用动态规划+路径回溯精确计算编辑操作（替换、删除、插入）
+        当python-Levenshtein库不可用时的精确回退实现
+        
+        Args:
+            s1 (str): 参考字符串
+            s2 (str): 假设字符串
+            
+        Returns:
+            Tuple[int, int, int]: (替换数, 删除数, 插入数)
+        """
+        m, n = len(s1), len(s2)
+        
+        # 创建DP矩阵
+        dp = [[0] * (n + 1) for _ in range(m + 1)]
+        
+        # 初始化第一行和第一列
+        for i in range(m + 1):
+            dp[i][0] = i  # 从s1[:i]到空字符串需要i次删除
+        for j in range(n + 1):
+            dp[0][j] = j  # 从空字符串到s2[:j]需要j次插入
+        
+        # 填充DP矩阵
+        for i in range(1, m + 1):
+            for j in range(1, n + 1):
+                if s1[i-1] == s2[j-1]:
+                    # 字符相同，无需编辑
+                    dp[i][j] = dp[i-1][j-1]
+                else:
+                    # 字符不同，选择代价最小的操作
+                    dp[i][j] = min(
+                        dp[i-1][j-1] + 1,  # 替换
+                        dp[i-1][j] + 1,     # 删除
+                        dp[i][j-1] + 1      # 插入
+                    )
+        
+        # 路径回溯统计各类操作
+        i, j = m, n
+        substitutions = 0
+        deletions = 0
+        insertions = 0
+        
+        while i > 0 or j > 0:
+            if i == 0:
+                # 只能插入
+                insertions += j
+                break
+            if j == 0:
+                # 只能删除
+                deletions += i
+                break
+                
+            if s1[i-1] == s2[j-1]:
+                # 字符匹配，向左上移动
+                i -= 1
+                j -= 1
+            else:
+                # 找到当前位置的最优来源
+                if dp[i][j] == dp[i-1][j-1] + 1:
+                    # 替换操作
+                    substitutions += 1
+                    i -= 1
+                    j -= 1
+                elif dp[i][j] == dp[i-1][j] + 1:
+                    # 删除操作
+                    deletions += 1
+                    i -= 1
+                else:
+                    # 插入操作
+                    insertions += 1
+                    j -= 1
+        
+        return substitutions, deletions, insertions
+    
     def calculate_wer(self, reference: str, hypothesis: str, filter_fillers: bool = False) -> float:
         """
         计算词错误率 (Word Error Rate)
@@ -369,13 +456,10 @@ class ASRMetrics:
             return s, d, i
             
         except ImportError:
-            # 如果没有Levenshtein库，使用简单的估算
-            total_distance = self._calculate_edit_distance("".join(reference), "".join(hypothesis))
-            # 简单估算：假设操作平均分布
-            s = total_distance // 3
-            d = total_distance // 3
-            i = total_distance - s - d
-            return s, d, i
+            # 如果没有Levenshtein库，使用精确的DP路径回溯算法
+            ref_str = "".join(reference)
+            hyp_str = "".join(hypothesis)
+            return self._calculate_edit_ops_with_backtrack(ref_str, hyp_str)
     
     def calculate_accuracy(self, reference: str, hypothesis: str, filter_fillers: bool = False) -> float:
         """

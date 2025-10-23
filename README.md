@@ -24,6 +24,10 @@ A Python-based tool for batch comparing character accuracy rates between ASR (Au
 - Support multiple text encodings (UTF-8, GBK, GB2312, GB18030, ANSI)
 - **Filler word filtering**: Optional filtering of filler words like "嗯", "啊"
 - **Optimized user interface**: Larger result display area, more user-friendly experience
+- **Asynchronous computation**: Background thread processing with real-time progress updates
+- **Task cancellation**: Cancel long-running calculations at any time
+- **CLI tool**: Command-line interface for batch processing and automation
+- **Preprocessing pipeline**: Modular and configurable text preprocessing system
 
 ## 📦 Installation & Dependencies
 
@@ -74,9 +78,32 @@ python3 dev/src/main_with_tokenizers.py
 - **Control Area**: Statistics button and option configuration
 - **Result Display Area**: Detailed statistical result table
 
-### 2. Batch Processing Mode
+### 2. CLI Mode (Command Line Interface)
 
-For batch file processing, run the GUI interface directly:
+```bash
+# Single file comparison
+python3 dev/src/cli.py --asr path/to/asr.txt --ref path/to/ref.txt --tokenizer jieba
+
+# Batch processing
+python3 dev/src/cli.py --asr-dir path/to/asr_files/ --ref-dir path/to/ref_files/ --output results.csv
+
+# With filler word filtering
+python3 dev/src/cli.py --asr asr.txt --ref ref.txt --filter-fillers --output result.csv
+
+# List available tokenizers
+python3 dev/src/cli.py --list-tokenizers
+```
+
+#### CLI Features:
+- **Single file/Batch processing**: Process one or multiple file pairs
+- **Tokenizer selection**: Choose from available tokenizers
+- **Filler word filtering**: Optional language filler filtering
+- **Export formats**: CSV or TXT output
+- **Automation friendly**: Perfect for CI/CD pipelines
+
+### 3. Batch Processing Mode
+
+For GUI-based batch file processing:
 ```bash
 python3 dev/src/main_with_tokenizers.py
 ```
@@ -184,9 +211,14 @@ A: Refer to tokenizer selection guide, choose based on speed and accuracy needs:
 ### Current Version Highlights
 - 🎯 **Multi-tokenizer Architecture**: Support for three mainstream Chinese tokenizers
 - 🚀 **Smart Switching**: Automatic detection and graceful fallback
-- 🎨 **Optimized Interface**: More user-friendly experience
+- 🎨 **Optimized Interface**: More user-friendly experience with async processing
 - 📊 **Detailed Statistics**: Enhanced result display and analysis
 - 🔧 **Drag-and-Drop Sorting**: Intuitive file correspondence management
+- ⚡ **Asynchronous GUI**: Non-blocking interface with background computation
+- 🎯 **Task Control**: Real-time progress updates and cancellation support
+- 💻 **CLI Tool**: Professional command-line interface for automation
+- 🔄 **Preprocessing Pipeline**: Flexible and modular text preprocessing
+- 🧪 **Layered Testing**: pytest-based testing strategy with selective execution
 
 ### Backward Compatibility
 - ✅ Maintain original API interfaces unchanged

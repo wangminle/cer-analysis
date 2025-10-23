@@ -4,9 +4,14 @@
 简单的分词器测试脚本
 """
 
+import sys
+import os
+# 添加src目录到Python路径
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../dev/src'))
+
 try:
     print("正在测试分词器模块导入...")
-    from tokenizers import get_available_tokenizers, get_tokenizer_info
+    from text_tokenizers import get_available_tokenizers, get_tokenizer_info
     print("✓ 分词器模块导入成功!")
     
     print("\n正在获取可用分词器...")

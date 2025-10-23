@@ -285,21 +285,28 @@ def check_dependencies():
 ### 5.2 测试运行配置
 ```bash
 # pytest配置文件 pytest.ini
-[tool:pytest]
-testpaths = tests
-python_files = test_*.py
-python_classes = Test*
-python_functions = test_*
-addopts = 
-    -v
-    --tb=short
-    --strict-markers
-    --disable-warnings
+[pytest]
 markers =
-    unit: 单元测试
-    integration: 集成测试
-    performance: 性能测试
-    stability: 稳定性测试
+    basic: marks tests as basic functionality (fast, essential)
+    optional: marks tests for optional components (e.g., HanLP, THULAC)
+    performance: marks tests for performance measurement (long running)
+    gui: marks tests for GUI components (requires display)
+    cli: marks tests for CLI functionality
+    pipeline: marks tests for preprocessing pipeline
+    regression: marks tests for regression testing
+norecursedirs = v0.1.0 output
+
+# 运行示例
+# 运行基础测试（排除可选组件）
+pytest -m "not optional and not performance and not gui"
+
+# 运行所有测试
+pytest
+
+# 运行特定类型测试
+pytest -m basic
+pytest -m cli
+pytest -m pipeline
 ```
 
 ## 6. 预期测试结果
@@ -326,6 +333,7 @@ markers =
 
 ---
 
-**文档版本**：V1.0  
-**最后更新**：2025年7月23日  
+**文档版本**：V1.1  
+**最后更新时间**：2025-10-23 14:58  
+**更新说明**：[P2任务完成：更新测试运行配置，添加分层测试策略说明]  
 **维护人员**：开发团队 
