@@ -112,7 +112,7 @@ def run_coverage():
     
     project_root = get_project_root()
     tests_dir = project_root / "tests"
-    cov_source = str(project_root / "dev" / "src")
+    cov_source = str(project_root / "src" / "cer_tool")
     
     # 使用 sys.executable 确保使用当前 Python 解释器
     cmd = [

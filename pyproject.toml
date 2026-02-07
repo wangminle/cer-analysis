@@ -50,6 +50,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = ["test_*.py"]
+# 排除归档脚本和历史目录，与 tests/pytest.ini 保持一致
+norecursedirs = ["scripts", "test-v0.1.0", ".git", "__pycache__", ".pytest_cache"]
 markers = [
     "basic: 基础测试 - 仅依赖jieba分词器",
     "optional: 可选分词器测试",

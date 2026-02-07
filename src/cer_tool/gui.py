@@ -482,7 +482,7 @@ class ASRComparisonTool:
         self.asr_metrics_cache.clear()
 
         try:
-            from text_tokenizers.tokenizers.factory import TokenizerFactory
+            from cer_tool.tokenizers.factory import TokenizerFactory
             TokenizerFactory.clear_cache()
             success = True
             error_msg = ""

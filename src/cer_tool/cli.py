@@ -123,7 +123,7 @@ def batch_process_directory(asr_dir: str, ref_dir: str,
         else:
             failed_count += 1
     
-    # 统计总体结果
+    # 统计总体结果（非 JSON 模式打印人类可读摘要）
     if results and output_format != "json":
         print("\n" + "=" * 60)
         print("批处理完成！")
@@ -141,10 +141,11 @@ def batch_process_directory(asr_dir: str, ref_dir: str,
         print(f"平均CER: {avg_cer:.4f}")
         print(f"平均准确率: {avg_accuracy:.4f}")
         print(f"总错误: 替换={total_subs}, 删除={total_dels}, 插入={total_ins}")
-        
-        # 保存结果
-        if output_file:
-            save_results(results, output_file, output_format)
+    
+    # 保存结果到文件（所有格式统一处理，修复 JSON 模式不写文件的 bug）
+    if results and output_file:
+        save_results(results, output_file, output_format)
+        if output_format != "json":
             print(f"\n结果已保存到: {output_file}")
     
     return results
@@ -340,13 +341,27 @@ def main():
         if result is None:
             return 1
         
-        # JSON 格式直接输出到 stdout 或文件
-        if args.format == "json" and not args.output:
-            print(json.dumps(result, ensure_ascii=False, indent=2))
-        elif args.output:
+        # 输出结果
+        if args.output:
+            # 有输出文件：写入文件
             save_results([result], args.output, args.format)
             if args.format != "json":
                 print(f"\n结果已保存到: {args.output}")
+        
+        if args.format == "json" and not args.output:
+            # JSON 无文件：打印到 stdout
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        elif args.format != "json":
+            # 默认 text 模式：始终打印结果到终端
+            print(f"\n处理: {result['asr_file']} <-> {result['ref_file']}")
+            print(f"  分词器:  {result.get('tokenizer', 'jieba')}")
+            print(f"  CER:     {result['cer']:.4f}")
+            print(f"  准确率:  {result['accuracy']:.4f}")
+            print(f"  替换: {result['substitutions']}, "
+                  f"删除: {result['deletions']}, "
+                  f"插入: {result['insertions']}")
+            print(f"  参考长度: {result['ref_length']}, "
+                  f"假设长度: {result['hyp_length']}")
         
         return 0
     

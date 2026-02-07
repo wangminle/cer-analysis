@@ -421,18 +421,17 @@ class ASRMetrics:
         ref_words = [char for char in ref_processed]
         hyp_words = [char for char in hyp_processed]
         
-        # 确保列表不为空
-        if not ref_words:
-            ref_words = [""]
-        if not hyp_words:
-            hyp_words = [""]
+        # 边界条件处理：统一与 calculate_cer / calculate_detailed_metrics 一致的语义
+        if len(ref_words) == 0 and len(hyp_words) == 0:
+            return 0.0
+        if len(ref_words) == 0:
+            return 1.0  # 空参考 + 非空假设 → 最差分数
+        if len(hyp_words) == 0:
+            return 1.0  # 非空参考 + 空假设 → 最差分数
         
-        # 使用自定义的方式计算WER
+        # 正常情况：两个都非空
         s, d, i = self._calculate_edit_ops(ref_words, hyp_words)
-        if len(ref_words) > 0:
-            wer = (s + d + i) / len(ref_words)
-        else:
-            wer = 1.0 if len(hyp_words) > 0 else 0.0
+        wer = (s + d + i) / len(ref_words)
         
         return wer
     
