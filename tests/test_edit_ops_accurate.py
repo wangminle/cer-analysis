@@ -7,10 +7,10 @@
 
 import sys
 import os
-# 添加src目录到Python路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../dev/src'))
+# 添加 src 目录到 Python 路径（V2 新结构）
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from asr_metrics_refactored import ASRMetrics
+from cer_tool.metrics import ASRMetrics
 
 def test_edit_ops_accurate():
     """测试精确的编辑操作统计"""

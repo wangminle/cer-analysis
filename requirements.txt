@@ -1,0 +1,23 @@
+# CER-Analysis-Tool V2 - 核心依赖
+# V2 变更：移除 jiwer 和 pandas（已用标准库替代）
+jieba>=0.42.1
+
+# 推荐安装：高效编辑距离计算
+python-Levenshtein>=0.12.2
+
+# ─── 可选的分词器依赖 ───────────────────────────
+# 如果不安装，对应的分词器将不可用，但不影响 jieba 分词器的使用
+
+# THULAC 中文分词器（清华大学）
+# pip install thulac>=0.2.0
+
+# HanLP 自然语言处理工具包
+# pip install hanlp>=2.1.0
+
+# 注意：
+# 1. jieba 是必需的默认分词器
+# 2. python-Levenshtein 可选，内置了纯 Python 备选实现
+# 3. thulac 和 hanlp 是可选的，安装后可提供更多分词选择
+# 4. 推荐使用 pyproject.toml 的 extras 安装可选依赖：
+#    pip install cer-analysis-tool[thulac]
+#    pip install cer-analysis-tool[all]

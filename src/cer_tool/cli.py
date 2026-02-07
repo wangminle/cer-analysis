@@ -1,51 +1,27 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ASR字准确率计算工具 - 命令行接口
-支持批处理、分词器选择、语气词过滤和CSV导出
+CER-Analysis-Tool - 命令行接口 (V2)
+支持批处理、分词器选择、语气词过滤、多格式输出
 """
 
 import argparse
+import json
 import sys
 import os
 import csv
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional
 
-from asr_metrics_refactored import ASRMetrics
-from text_tokenizers import get_available_tokenizers, get_tokenizer_info
-
-
-def read_file_with_encodings(file_path: str) -> str:
-    """
-    使用多种编码方式读取文件内容
-    
-    Args:
-        file_path (str): 文件路径
-        
-    Returns:
-        str: 文件内容
-    """
-    encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030']
-    
-    for encoding in encodings:
-        try:
-            with open(file_path, 'r', encoding=encoding) as f:
-                return f.read().strip()
-        except UnicodeDecodeError:
-            continue
-    
-    # 最后尝试系统默认编码
-    try:
-        with open(file_path, 'r') as f:
-            return f.read().strip()
-    except Exception as e:
-        raise Exception(f"无法读取文件 {file_path}: {str(e)}")
+from cer_tool import __version__
+from cer_tool.metrics import ASRMetrics
+from cer_tool.tokenizers import get_available_tokenizers, get_tokenizer_info
+from cer_tool.file_utils import read_file_with_encodings
 
 
 def process_single_pair(asr_file: str, ref_file: str, 
                        tokenizer: str, filter_fillers: bool,
-                       verbose: bool = False) -> dict:
+                       verbose: bool = False) -> Optional[dict]:
     """
     处理单个文件对
     
@@ -57,7 +33,7 @@ def process_single_pair(asr_file: str, ref_file: str,
         verbose: 是否显示详细信息
         
     Returns:
-        dict: 计算结果
+        dict: 计算结果，失败返回 None
     """
     try:
         # 读取文件
@@ -84,17 +60,18 @@ def process_single_pair(asr_file: str, ref_file: str,
         return result
         
     except Exception as e:
-        if verbose:
-            print(f"\n错误: 处理文件对时出错")
-            print(f"  ASR文件: {asr_file}")
-            print(f"  标注文件: {ref_file}")
-            print(f"  错误信息: {str(e)}")
+        # 无论 verbose 与否，错误都需要报告
+        print(f"\n错误: 处理文件对时出错", file=sys.stderr)
+        print(f"  ASR文件: {asr_file}", file=sys.stderr)
+        print(f"  标注文件: {ref_file}", file=sys.stderr)
+        print(f"  错误信息: {str(e)}", file=sys.stderr)
         return None
 
 
 def batch_process_directory(asr_dir: str, ref_dir: str,
                            tokenizer: str, filter_fillers: bool,
                            output_file: str = None,
+                           output_format: str = "text",
                            verbose: bool = False) -> List[dict]:
     """
     批处理目录中的文件
@@ -105,6 +82,7 @@ def batch_process_directory(asr_dir: str, ref_dir: str,
         tokenizer: 分词器名称
         filter_fillers: 是否过滤语气词
         output_file: 输出文件路径
+        output_format: 输出格式 (text/csv/json)
         verbose: 是否显示详细信息
         
     Returns:
@@ -118,15 +96,18 @@ def batch_process_directory(asr_dir: str, ref_dir: str,
     ref_files = sorted(ref_path.glob('*.txt'))
     
     if len(asr_files) != len(ref_files):
-        print(f"警告: ASR文件数({len(asr_files)})和标注文件数({len(ref_files)})不匹配")
+        print(f"警告: ASR文件数({len(asr_files)})和标注文件数({len(ref_files)})不匹配", 
+              file=sys.stderr)
     
     results = []
+    failed_count = 0
     total = min(len(asr_files), len(ref_files))
     
-    print(f"\n开始批处理，共{total}个文件对...")
-    print(f"分词器: {tokenizer}")
-    print(f"语气词过滤: {'启用' if filter_fillers else '禁用'}")
-    print("-" * 60)
+    if output_format != "json":
+        print(f"\n开始批处理，共{total}个文件对...")
+        print(f"分词器: {tokenizer}")
+        print(f"语气词过滤: {'启用' if filter_fillers else '禁用'}")
+        print("-" * 60)
     
     for i, (asr_file, ref_file) in enumerate(zip(asr_files, ref_files), 1):
         if verbose:
@@ -139,9 +120,11 @@ def batch_process_directory(asr_dir: str, ref_dir: str,
         
         if result:
             results.append(result)
+        else:
+            failed_count += 1
     
     # 统计总体结果
-    if results:
+    if results and output_format != "json":
         print("\n" + "=" * 60)
         print("批处理完成！")
         print("=" * 60)
@@ -153,16 +136,66 @@ def batch_process_directory(asr_dir: str, ref_dir: str,
         total_ins = sum(r['insertions'] for r in results)
         
         print(f"成功处理: {len(results)}/{total}个文件对")
+        if failed_count > 0:
+            print(f"失败: {failed_count}个文件对")
         print(f"平均CER: {avg_cer:.4f}")
         print(f"平均准确率: {avg_accuracy:.4f}")
         print(f"总错误: 替换={total_subs}, 删除={total_dels}, 插入={total_ins}")
         
         # 保存结果
         if output_file:
-            save_results_to_csv(results, output_file)
+            save_results(results, output_file, output_format)
             print(f"\n结果已保存到: {output_file}")
     
     return results
+
+
+def save_results(results: List[dict], output_file: str, output_format: str = "text"):
+    """
+    保存结果到文件，支持多种格式
+    
+    Args:
+        results: 结果列表
+        output_file: 输出文件路径
+        output_format: 输出格式 (text/csv/json)
+    """
+    if not results:
+        print("没有结果可以保存")
+        return
+    
+    if output_format == "json" or output_file.endswith('.json'):
+        save_results_to_json(results, output_file)
+    elif output_format == "csv" or output_file.endswith('.csv'):
+        save_results_to_csv(results, output_file)
+    else:
+        save_results_to_txt(results, output_file)
+
+
+def save_results_to_json(results: List[dict], output_file: str):
+    """
+    保存结果到JSON文件（V2新增）
+    
+    Args:
+        results: 结果列表
+        output_file: 输出文件路径
+    """
+    # 构建可序列化的输出
+    output = {
+        "tool": "CER-Analysis-Tool",
+        "version": __version__,
+        "summary": {
+            "total_pairs": len(results),
+            "avg_cer": sum(r['cer'] for r in results) / len(results),
+            "avg_accuracy": sum(r['accuracy'] for r in results) / len(results),
+            "total_substitutions": sum(r['substitutions'] for r in results),
+            "total_deletions": sum(r['deletions'] for r in results),
+            "total_insertions": sum(r['insertions'] for r in results),
+        },
+        "results": results,
+    }
+    
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
 
 
 def save_results_to_csv(results: List[dict], output_file: str):
@@ -173,11 +206,6 @@ def save_results_to_csv(results: List[dict], output_file: str):
         results: 结果列表
         output_file: 输出文件路径
     """
-    if not results:
-        print("没有结果可以保存")
-        return
-    
-    # 定义CSV列
     fieldnames = [
         'asr_file', 'ref_file', 'tokenizer',
         'cer', 'wer', 'accuracy',
@@ -187,12 +215,11 @@ def save_results_to_csv(results: List[dict], output_file: str):
     ]
     
     with open(output_file, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
         writer.writeheader()
         
         for result in results:
-            row = {field: result.get(field, '') for field in fieldnames}
-            writer.writerow(row)
+            writer.writerow(result)
 
 
 def save_results_to_txt(results: List[dict], output_file: str):
@@ -203,15 +230,9 @@ def save_results_to_txt(results: List[dict], output_file: str):
         results: 结果列表
         output_file: 输出文件路径
     """
-    if not results:
-        print("没有结果可以保存")
-        return
-    
     with open(output_file, 'w', encoding='utf-8') as f:
-        # 写入表头
         f.write("ASR文件\t标注文件\t分词器\tCER\t准确率\t替换\t删除\t插入\t过滤语气词\n")
         
-        # 写入数据
         for result in results:
             f.write(f"{result['asr_file']}\t"
                    f"{result['ref_file']}\t"
@@ -245,23 +266,31 @@ def list_tokenizers():
 def main():
     """主函数 - CLI入口"""
     parser = argparse.ArgumentParser(
-        description='ASR字准确率计算工具 - 命令行版本',
+        prog='cer-tool',
+        description='CER-Analysis-Tool - 中文字准确率分析工具（命令行版本）',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例用法:
   # 单文件对比
-  python cli.py --asr asr.txt --ref ref.txt
+  cer-tool --asr asr.txt --ref ref.txt
   
   # 指定分词器和过滤语气词
-  python cli.py --asr asr.txt --ref ref.txt --tokenizer thulac --filter-fillers
+  cer-tool --asr asr.txt --ref ref.txt --tokenizer thulac --filter-fillers
   
   # 批量处理目录
-  python cli.py --asr-dir ./asr_files --ref-dir ./ref_files --output results.csv
+  cer-tool --asr-dir ./asr_files --ref-dir ./ref_files --output results.csv
+  
+  # 批量处理并输出JSON
+  cer-tool --asr-dir ./asr_files --ref-dir ./ref_files --output results.json --format json
   
   # 列出可用分词器
-  python cli.py --list-tokenizers
+  cer-tool --list-tokenizers
         """
     )
+    
+    # 版本信息（V2 新增）
+    parser.add_argument('--version', action='version', 
+                       version=f'CER-Analysis-Tool {__version__}')
     
     # 基本选项
     parser.add_argument('--asr', type=str, help='ASR转写结果文件路径')
@@ -282,7 +311,10 @@ def main():
     
     # 输出选项
     parser.add_argument('--output', '-o', type=str,
-                       help='输出文件路径（支持.csv或.txt格式）')
+                       help='输出文件路径（支持 .csv/.txt/.json 格式）')
+    parser.add_argument('--format', '-f', type=str, default='text',
+                       choices=['text', 'csv', 'json'],
+                       help='输出格式 (默认: text)')
     parser.add_argument('--verbose', '-v', action='store_true',
                        help='显示详细处理信息')
     
@@ -295,21 +327,26 @@ def main():
     
     # 单文件模式
     if args.asr and args.ref:
-        print("\n单文件对比模式")
-        print("=" * 60)
+        if args.format != "json":
+            print("\n单文件对比模式")
+            print("=" * 60)
         
         result = process_single_pair(
             args.asr, args.ref,
             args.tokenizer, args.filter_fillers,
-            verbose=True
+            verbose=args.verbose
         )
         
-        if result and args.output:
-            if args.output.endswith('.csv'):
-                save_results_to_csv([result], args.output)
-            else:
-                save_results_to_txt([result], args.output)
-            print(f"\n结果已保存到: {args.output}")
+        if result is None:
+            return 1
+        
+        # JSON 格式直接输出到 stdout 或文件
+        if args.format == "json" and not args.output:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+        elif args.output:
+            save_results([result], args.output, args.format)
+            if args.format != "json":
+                print(f"\n结果已保存到: {args.output}")
         
         return 0
     
@@ -318,8 +355,20 @@ def main():
         results = batch_process_directory(
             args.asr_dir, args.ref_dir,
             args.tokenizer, args.filter_fillers,
-            args.output, args.verbose
+            args.output, args.format, args.verbose
         )
+        
+        # JSON 无文件输出时打印到 stdout
+        if args.format == "json" and not args.output and results:
+            output = {
+                "tool": "CER-Analysis-Tool",
+                "version": __version__,
+                "results": results,
+            }
+            print(json.dumps(output, ensure_ascii=False, indent=2))
+        
+        if not results:
+            return 1
         return 0
     
     # 没有提供足够的参数
@@ -330,4 +379,3 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
-

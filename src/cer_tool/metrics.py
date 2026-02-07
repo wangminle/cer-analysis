@@ -1,16 +1,26 @@
 """
 重构后的ASRMetrics类
 支持多种分词器的字准确率计算引擎
+
+V2 变更：
+- 预处理流水线集成（替代 jiwer 预处理调用）
+- 边界条件统一处理
 """
 
-import jiwer
 import difflib
 import re
 import unicodedata
 from typing import List, Tuple, Dict, Any, Optional
 
 # 导入分词器模块
-from text_tokenizers import get_tokenizer, get_available_tokenizers, TokenizerError
+from cer_tool.tokenizers import get_tokenizer, get_available_tokenizers, TokenizerError
+
+# 导入预处理流水线
+from cer_tool.preprocessing import (
+    PreprocessingPipeline, PipelinePresets, create_pipeline,
+    RemovePunctuationStep, NormalizeWidthStep, NormalizeWhitespaceStep,
+    LowercaseStep, FilterFillerWordsStep, ChineseTokenizeStep
+)
 
 
 class ASRMetrics:
@@ -183,9 +193,33 @@ class ASRMetrics:
             # 回退到简单的字符位置
             return [(char, i) for i, char in enumerate(text)]
     
+    def _build_pipeline(self, filter_fillers: bool = False) -> PreprocessingPipeline:
+        """
+        构建预处理流水线（替代原 jiwer.Compose 调用）
+        
+        Args:
+            filter_fillers (bool): 是否包含语气词过滤步骤
+            
+        Returns:
+            PreprocessingPipeline: 配置好的流水线实例
+        """
+        if filter_fillers:
+            # 含语气词过滤的 ASR 评估配置
+            pipeline = PipelinePresets.asr_evaluation(self.tokenizer)
+        else:
+            # 标准 CER 优化配置：移除标点 → 全角统一 → 去空格
+            pipeline = PipelinePresets.cer_optimized(self.tokenizer)
+        
+        # 追加小写转换步骤（与原 jiwer.ToLowerCase 一致）
+        pipeline.add_step(LowercaseStep())
+        
+        return pipeline
+    
     def preprocess_text(self, text: str, filter_fillers: bool = False) -> str:
         """
-        预处理文本：移除标点符号、转换为小写、移除多余空格等
+        预处理文本：使用 PreprocessingPipeline 替代 jiwer
+        
+        处理顺序：移除标点 → 全角/半角统一 → 去空格 → 转小写 [→ 语气词过滤]
         
         Args:
             text (str): 输入文本
@@ -198,32 +232,13 @@ class ASRMetrics:
         if not text or not text.strip():
             return ""
         
-        # 创建基本预处理转换
-        transformation = jiwer.Compose([
-            jiwer.RemoveMultipleSpaces(),
-            jiwer.Strip(),
-            jiwer.RemovePunctuation(),
-            jiwer.ToLowerCase(),
-        ])
-        
-        # 应用预处理
-        processed_text = transformation(text)
+        # 构建并执行预处理流水线
+        pipeline = self._build_pipeline(filter_fillers)
+        processed_text = pipeline.process(text)
         
         # 优化：如果处理后为空，直接返回
         if not processed_text:
             return ""
-        
-        # 如果需要过滤语气词
-        if filter_fillers:
-            processed_text = self.filter_filler_words(processed_text)
-            if not processed_text:
-                return ""
-        
-        # 对于中文，先进行分词预处理
-        processed_text = self.preprocess_chinese_text(processed_text)
-        
-        # 应用中文标准化处理
-        processed_text = self.normalize_chinese_text(processed_text)
         
         return processed_text
     
@@ -247,15 +262,9 @@ class ASRMetrics:
         ref_positions = self.get_character_positions(ref_processed)
         hyp_positions = self.get_character_positions(hyp_processed)
         
-        # 提取字符列表
+        # 提取字符列表（仅用于调试/扩展，CER 直接基于 processed 字符串）
         ref_chars = [pos[0] for pos in ref_positions] if ref_positions else list(ref_processed)
         hyp_chars = [pos[0] for pos in hyp_positions] if hyp_positions else list(hyp_processed)
-        
-        # 确保两个字符串都不为空
-        if len(ref_chars) == 0:
-            ref_chars = [""]
-        if len(hyp_chars) == 0:
-            hyp_chars = [""]
         
         # 计算编辑距离
         try:
@@ -500,24 +509,44 @@ class ASRMetrics:
         ref_chars = [pos[0] for pos in ref_positions] if ref_positions else list(ref_processed)
         hyp_chars = [pos[0] for pos in hyp_positions] if hyp_positions else list(hyp_processed)
         
-        # 确保列表不为空
-        if not ref_chars:
-            ref_chars = [""]
-        if not hyp_chars:
-            hyp_chars = [""]
+        # 边界条件处理：统一与 calculate_cer() 一致的空文本语义
+        # 空参考 + 空假设 → CER=0.0  空参考 + 非空假设 → CER=1.0
+        ref_length = len(ref_chars)
+        hyp_length = len(hyp_chars)
         
-        # 使用自定义方式计算详细指标
+        if ref_length == 0 and hyp_length == 0:
+            # 两个都为空，视为完全匹配
+            return {
+                'cer': 0.0, 'wer': 0.0, 'mer': 0.0, 'wil': 0.0, 'wip': 1.0,
+                'hits': 0, 'substitutions': 0, 'deletions': 0, 'insertions': 0,
+                'ref_length': 0, 'hyp_length': 0,
+                'accuracy': 1.0, 'tokenizer': self.tokenizer_name
+            }
+        
+        if ref_length == 0:
+            # 空参考 + 非空假设，CER=1.0（与 calculate_cer 一致）
+            return {
+                'cer': 1.0, 'wer': 1.0, 'mer': 1.0, 'wil': 1.0, 'wip': 0.0,
+                'hits': 0, 'substitutions': 0, 'deletions': 0, 'insertions': hyp_length,
+                'ref_length': 0, 'hyp_length': hyp_length,
+                'accuracy': 0.0, 'tokenizer': self.tokenizer_name
+            }
+        
+        if hyp_length == 0:
+            # 非空参考 + 空假设，CER=1.0
+            return {
+                'cer': 1.0, 'wer': 1.0, 'mer': 1.0, 'wil': 1.0, 'wip': 0.0,
+                'hits': 0, 'substitutions': 0, 'deletions': ref_length, 'insertions': 0,
+                'ref_length': ref_length, 'hyp_length': 0,
+                'accuracy': 0.0, 'tokenizer': self.tokenizer_name
+            }
+        
+        # 正常情况：两个都非空，计算编辑操作
         s, d, i = self._calculate_edit_ops(ref_chars, hyp_chars)
         
         # 计算总错误数和字符错误率
         total_errors = s + d + i
-        ref_length = len(ref_chars)
-        hyp_length = len(hyp_chars)
-        
-        if ref_length > 0:
-            cer = total_errors / ref_length
-        else:
-            cer = 1.0 if hyp_length > 0 else 0.0
+        cer = total_errors / ref_length
         
         # 返回详细指标
         return {

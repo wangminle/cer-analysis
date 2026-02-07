@@ -1,0 +1,78 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "cer-analysis-tool"
+version = "2.0.0"
+description = "中文 CER 字准确率分析工具"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+
+# 核心依赖：仅 jieba（V2 已移除 jiwer + pandas）
+dependencies = [
+    "jieba>=0.42.1",
+]
+
+[project.optional-dependencies]
+# 高效编辑距离（推荐）
+levenshtein = ["python-Levenshtein>=0.12.2"]
+
+# THULAC 分词器
+thulac = ["thulac>=0.2.0"]
+
+# HanLP 分词器（含 torch）
+hanlp = ["hanlp>=2.1.0", "torch"]
+
+# 全部可选分词器
+all = [
+    "python-Levenshtein>=0.12.2",
+    "thulac>=0.2.0",
+    "hanlp>=2.1.0",
+    "torch",
+]
+
+# 开发/测试依赖
+dev = [
+    "pytest>=6.0",
+    "pytest-cov",
+    "ruff",
+    "mypy",
+]
+
+[project.scripts]
+cer-tool = "cer_tool.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+markers = [
+    "basic: 基础测试 - 仅依赖jieba分词器",
+    "optional: 可选分词器测试",
+    "slow: 慢速测试",
+    "network: 需要网络的测试",
+    "gui: GUI测试",
+    "integration: 集成测试",
+    "unit: 单元测试",
+    "boundary: 边界条件测试",
+    "cli: CLI工具测试",
+    "pipeline: 预处理流水线测试",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+ignore_missing_imports = true

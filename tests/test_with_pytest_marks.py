@@ -9,11 +9,11 @@ import sys
 import os
 import pytest
 
-# 添加src目录到Python路径
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../dev/src'))
+# 添加 src 目录到 Python 路径（V2 新结构）
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from asr_metrics_refactored import ASRMetrics
-from text_tokenizers import get_available_tokenizers, get_tokenizer_info
+from cer_tool.metrics import ASRMetrics
+from cer_tool.tokenizers import get_available_tokenizers, get_tokenizer_info
 
 
 def is_tokenizer_available(tokenizer_name: str) -> bool:
