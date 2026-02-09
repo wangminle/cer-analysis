@@ -216,6 +216,62 @@ class TestBatchMode:
         assert 'results' in data
         assert len(data['results']) == 3
 
+    @pytest.mark.basic
+    @pytest.mark.cli
+    def test_batch_pairs_by_filename_intersection(self, tmp_path):
+        """同数量但文件名不完全一致时，应按同名交集配对而非顺序配对"""
+        asr_dir = tmp_path / "asr"
+        ref_dir = tmp_path / "ref"
+        asr_dir.mkdir()
+        ref_dir.mkdir()
+
+        create_text_file(str(asr_dir / "001.txt"), "甲")
+        create_text_file(str(asr_dir / "002.txt"), "你好世界")
+        create_text_file(str(ref_dir / "002.txt"), "你好世界")
+        create_text_file(str(ref_dir / "003.txt"), "乙")
+
+        result = run_cli('--asr-dir', str(asr_dir), '--ref-dir', str(ref_dir), '--format', 'json')
+        assert result.returncode == 0
+
+        data = json.loads(result.stdout)
+        assert len(data['results']) == 1
+        assert data['results'][0]['asr_file'] == "002.txt"
+        assert data['results'][0]['ref_file'] == "002.txt"
+
+    @pytest.mark.basic
+    @pytest.mark.cli
+    def test_batch_warns_unmatched_files(self, tmp_path):
+        """存在未配对文件时应输出告警并跳过处理"""
+        asr_dir = tmp_path / "asr"
+        ref_dir = tmp_path / "ref"
+        asr_dir.mkdir()
+        ref_dir.mkdir()
+
+        create_text_file(str(asr_dir / "001.txt"), "今天天气")
+        create_text_file(str(asr_dir / "002.txt"), "你好世界")
+        create_text_file(str(ref_dir / "002.txt"), "你好世界")
+
+        result = run_cli('--asr-dir', str(asr_dir), '--ref-dir', str(ref_dir))
+        assert result.returncode == 0
+        assert "将被跳过" in result.stderr
+        assert "ASR文件" in result.stderr
+
+    @pytest.mark.basic
+    @pytest.mark.cli
+    def test_batch_fail_when_no_common_filenames(self, tmp_path):
+        """目录间无同名文件时应报错并返回失败码"""
+        asr_dir = tmp_path / "asr"
+        ref_dir = tmp_path / "ref"
+        asr_dir.mkdir()
+        ref_dir.mkdir()
+
+        create_text_file(str(asr_dir / "a001.txt"), "文本A")
+        create_text_file(str(ref_dir / "b001.txt"), "文本B")
+
+        result = run_cli('--asr-dir', str(asr_dir), '--ref-dir', str(ref_dir), '--format', 'json')
+        assert result.returncode == 1
+        assert "没有同名文件可配对" in result.stderr
+
 
 # ════════════════════════════════════════════════════
 # 第四组：选项组合

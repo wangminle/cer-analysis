@@ -1,0 +1,285 @@
+Metadata-Version: 2.4
+Name: cer-analysis-tool
+Version: 2.0.0
+Summary: 中文 CER 字准确率分析工具
+License: MIT
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: jieba>=0.42.1
+Provides-Extra: levenshtein
+Requires-Dist: python-Levenshtein>=0.12.2; extra == "levenshtein"
+Provides-Extra: thulac
+Requires-Dist: thulac>=0.2.0; extra == "thulac"
+Provides-Extra: hanlp
+Requires-Dist: hanlp>=2.1.0; extra == "hanlp"
+Requires-Dist: torch; extra == "hanlp"
+Provides-Extra: all
+Requires-Dist: python-Levenshtein>=0.12.2; extra == "all"
+Requires-Dist: thulac>=0.2.0; extra == "all"
+Requires-Dist: hanlp>=2.1.0; extra == "all"
+Requires-Dist: torch; extra == "all"
+Provides-Extra: dev
+Requires-Dist: pytest>=6.0; extra == "dev"
+Requires-Dist: pytest-cov; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: mypy; extra == "dev"
+Dynamic: license-file
+
+# ASR字准确率对比工具
+
+基于Python的ASR（自动语音识别）字准确率批量对比工具，支持多种中文分词器切换。
+
+## ✨ 核心特性
+
+### 🎯 多分词器支持
+- **Jieba分词器**：默认选择，高速分词，适合日常使用
+- **THULAC分词器**：清华大学开发，高精度分词，适合专业分析
+- **HanLP分词器**：深度学习模型，最高精度，适合科研环境
+
+### 🚀 智能特性
+- ✅ **自动检测分词器可用性**：启动时检测已安装的分词器
+- ✅ **智能降级机制**：分词器不可用时自动回退到jieba
+- ✅ **实时状态显示**：GUI界面显示分词器状态和版本信息
+- ✅ **无依赖演示**：提供完整的架构演示程序，无需安装额外依赖
+
+### 📊 高级功能
+- 批量导入ASR转写结果文档和标准标注文档
+- 拖拽建立ASR结果和标注文件的一一对应关系
+- 自动计算字准确率（Character Accuracy Rate）
+- 统计文档字数信息
+- 支持导出统计结果为TXT或CSV格式
+- 支持多种文本编码（UTF-8、GBK、GB2312、GB18030、ANSI）
+- **语气词过滤功能**：可选择过滤"嗯"、"啊"等语气词
+- **优化的用户界面**：更大的结果展示区域，更友好的操作体验
+- **异步计算**：后台线程处理，实时进度更新
+- **任务取消**：随时取消长时间运行的计算任务
+- **CLI工具**：命令行界面，支持批处理和自动化
+- **预处理流水线**：模块化、可配置的文本预处理系统
+
+## 📦 安装与依赖
+
+### 安装方式
+```bash
+# 方式一：使用 pipenv（推荐）
+pipenv install              # 安装核心依赖
+pipenv install --dev        # 安装核心 + 开发依赖
+
+# 方式二：使用 pip + pyproject.toml
+pip install -e .            # 安装核心依赖（editable 模式）
+pip install -e .[all]       # 安装全部可选分词器
+pip install -e .[dev]       # 安装开发/测试工具
+```
+
+#### 依赖说明
+**核心依赖（必需）：**
+- `jieba>=0.42.1`：默认中文分词器
+
+**推荐依赖：**
+- `python-Levenshtein>=0.12.2`：高效编辑距离计算（内置纯 Python 备选）
+
+**可选分词器：**
+- `thulac>=0.2.0`：THULAC 高精度分词器（`pip install -e .[thulac]`）
+- `hanlp>=2.1.0`：HanLP 深度学习分词器（`pip install -e .[hanlp]`）
+
+## 🎮 使用方法
+
+### 1. GUI界面方式（推荐）
+
+```bash
+python3 dev/src/main_with_tokenizers.py
+```
+
+#### 操作步骤：
+1. **选择分词器**：在顶部下拉框中选择所需的分词器
+2. **查看状态**：确认分词器状态显示为绿色✓，点击"分词器信息"查看详细信息
+3. **导入文件**：
+   - 左侧：点击"选择ASR文件"批量导入ASR转写结果
+   - 右侧：点击"选择标注文件"批量导入标准标注文件
+4. **建立对应关系**：通过拖拽调整文件顺序
+5. **配置选项**：根据需要勾选"语气词过滤"
+6. **计算统计**：点击"开始统计"按钮
+7. **查看结果**：结果表格显示详细统计信息，包括使用的分词器类型
+8. **导出数据**：点击"导出结果"保存为文件
+
+#### 界面功能说明：
+- **分词器选择区域**：选择和管理分词器
+- **文件选择区域**：导入和管理文件列表
+- **控制区域**：统计按钮和选项配置
+- **结果展示区域**：详细的统计结果表格
+
+### 2. CLI模式（命令行界面）
+
+```bash
+# 单文件对比
+python3 dev/src/cli.py --asr path/to/asr.txt --ref path/to/ref.txt --tokenizer jieba
+
+# 批量处理
+python3 dev/src/cli.py --asr-dir path/to/asr_files/ --ref-dir path/to/ref_files/ --output results.csv
+
+# 启用语气词过滤
+python3 dev/src/cli.py --asr asr.txt --ref ref.txt --filter-fillers --output result.csv
+
+# 列出可用分词器
+python3 dev/src/cli.py --list-tokenizers
+```
+
+#### CLI功能特性：
+- **单文件/批处理**：处理单个或多个文件对
+- **分词器选择**：从可用分词器中选择
+- **语气词过滤**：可选的语气词过滤
+- **导出格式**：CSV或TXT输出
+- **自动化友好**：适合CI/CD流水线
+
+### 3. 批量处理模式
+
+对于GUI界面的批量文件处理：
+```bash
+python3 dev/src/main_with_tokenizers.py
+```
+然后按照界面操作步骤进行批量导入和处理。
+
+## 🎯 分词器选择指南
+
+### Jieba分词器
+- **性能**：⚡ 高速
+- **精度**：⭐⭐⭐ 中等
+- **适用场景**：日常批量处理、快速验证
+- **优势**：速度快、占用资源少、兼容性好
+
+### THULAC分词器
+- **性能**：⚡⚡ 中等速度
+- **精度**：⭐⭐⭐⭐ 高精度
+- **适用场景**：专业分析、高质量要求
+- **优势**：清华大学开发、学术标准、词性标注准确
+
+### HanLP分词器
+- **性能**：⚡ 较慢（首次使用需下载模型）
+- **精度**：⭐⭐⭐⭐⭐ 最高精度
+- **适用场景**：科研环境、最高精度要求
+- **优势**：深度学习模型、多任务支持、持续更新
+
+## 📐 字准确率计算方法
+
+使用字符错误率（CER）的补集：
+
+```
+字准确率 = 1 - CER = 1 - (S + D + I) / N
+```
+
+其中：
+- **S**：替换错误数
+- **D**：删除错误数  
+- **I**：插入错误数
+- **N**：标准文本中的字符总数
+
+### 🔧 改进的计算流程
+
+1. **分词预处理**：使用选定的分词器进行文本分词
+2. **文本标准化**：处理全/半角字符、统一数字表达
+3. **语气词过滤（可选）**：过滤"嗯"、"啊"、"呢"等语气词
+4. **字符位置定位**：精确定位每个字符在原文中的位置
+5. **编辑距离计算**：使用Levenshtein距离算法
+6. **错误分析**：识别替换、删除、插入错误并提供可视化
+
+## 📁 项目结构
+
+```
+cer-analysis/                            # 项目根目录
+├── src/                                 # 🧠 正式源码目录
+│   └── cer_tool/                        # Python 包
+│       ├── __init__.py                  # 包元数据 + 兼容性包装
+│       ├── __main__.py                  # python -m cer_tool 入口
+│       ├── metrics.py                   # 📊 CER 指标计算引擎
+│       ├── cli.py                       # 💻 CLI 命令行接口
+│       ├── gui.py                       # 🎨 GUI 图形界面（tkinter）
+│       ├── preprocessing.py             # 🔄 预处理流水线
+│       ├── file_utils.py                # 📂 公共文件工具
+│       └── tokenizers/                  # 分词器模块
+│           ├── base.py                  # 抽象基类
+│           ├── factory.py               # 工厂类（单例 + 缓存）
+│           ├── jieba_tokenizer.py       # Jieba 实现
+│           ├── thulac_tokenizer.py      # THULAC 实现
+│           └── hanlp_tokenizer.py       # HanLP 实现
+│
+├── tests/                               # 🧪 测试目录（127 项 pytest 用例）
+│   ├── pytest.ini                       # pytest 配置
+│   ├── test_boundary.py                 # 边界条件测试（20 用例）
+│   ├── test_cli.py                      # CLI 工具测试（14 用例）
+│   ├── test_preprocessing.py            # 预处理流水线测试（25 用例）
+│   ├── test_core_metrics.py             # 核心指标计算测试（33 用例）
+│   ├── test_tokenizers_unit.py          # 分词器单元测试（23 用例）
+│   ├── test_with_pytest_marks.py        # V1 遗留集成测试（12 用例）
+│   └── reports/                         # 📋 测试报告与策略文档
+│
+├── docs/                                # 📚 项目文档
+├── dev/                                 # 🛠 开发辅助目录
+├── assets/                              # 🎨 静态资源
+├── release/                             # 📦 发布产物
+├── ref/                                 # 📋 参考资料（只读）
+├── pyproject.toml                       # 包定义 + 依赖分层
+├── CLAUDE.md                            # 项目知识库（AI 助手上下文）
+└── README.md                            # 项目说明
+```
+
+## 🔧 故障排除
+
+### 常见问题
+
+**Q: 分词器显示不可用怎么办？**
+A: 检查对应依赖是否安装：
+```bash
+pip install thulac    # 安装THULAC
+pip install hanlp     # 安装HanLP
+```
+
+**Q: HanLP首次使用很慢？**
+A: HanLP需要下载深度学习模型，首次使用需要耐心等待。建议在网络良好的环境下使用。
+
+**Q: 如何快速验证功能？**
+A: 使用ref/demo目录中的示例文件测试：
+```bash
+# 使用GUI界面导入ref/demo目录中的示例文件进行测试
+python3 dev/src/main_with_tokenizers.py
+```
+
+**Q: 如何选择合适的分词器？**
+A: 参考分词器选择指南，根据速度和精度需求选择：
+- 追求速度：选择Jieba
+- 平衡性能：选择THULAC  
+- 追求精度：选择HanLP
+
+## 🆕 版本特性
+
+### 当前版本亮点
+- 🎯 **多分词器架构**：支持三种主流中文分词器
+- 🚀 **智能切换**：自动检测和优雅降级
+- 🎨 **优化界面**：异步处理，更友好的用户体验
+- 📊 **详细统计**：增强的结果展示和分析
+- 🔧 **拖拽排序**：直观的文件对应关系管理
+- ⚡ **异步GUI**：后台线程计算，界面不卡顿
+- 🎯 **任务控制**：实时进度更新和取消功能
+- 💻 **CLI工具**：专业的命令行界面，支持自动化
+- 🔄 **预处理流水线**：灵活、模块化的文本预处理
+- 🧪 **分层测试**：基于pytest的127项测试用例，reports/scripts/归档三层分离
+
+### 向后兼容
+- ✅ 保持原有API接口不变
+- ✅ 默认使用jieba分词器
+- ✅ 支持原有文件格式和编码
+
+## 📞 技术支持
+
+如有问题，请查看：
+- `ref/demo/` 目录 - 包含示例文件用于测试
+- `docs/` 目录 - 详细的技术文档
+- `tests/reports/` 目录 - 测试报告与测试策略
+- `pyproject.toml` - 完整的依赖配置
+
+## 📄 许可证
+
+本项目基于开源许可证发布，详见 `LICENSE` 文件。
+
+---
+
+🎉 **立即体验多分词器切换功能，提升ASR字准确率分析的精度和效率！** 

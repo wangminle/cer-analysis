@@ -91,25 +91,42 @@ def batch_process_directory(asr_dir: str, ref_dir: str,
     asr_path = Path(asr_dir)
     ref_path = Path(ref_dir)
     
-    # 获取所有txt文件
-    asr_files = sorted(asr_path.glob('*.txt'))
-    ref_files = sorted(ref_path.glob('*.txt'))
+    # 获取所有txt文件，建立 文件名(stem) → 完整路径 的映射
+    asr_map = {f.stem: f for f in sorted(asr_path.glob('*.txt'))}
+    ref_map = {f.stem: f for f in sorted(ref_path.glob('*.txt'))}
     
-    if len(asr_files) != len(ref_files):
-        print(f"警告: ASR文件数({len(asr_files)})和标注文件数({len(ref_files)})不匹配", 
+    # 按文件名取交集进行配对，保持排序
+    common_names = sorted(set(asr_map.keys()) & set(ref_map.keys()))
+    asr_only = sorted(set(asr_map.keys()) - set(ref_map.keys()))
+    ref_only = sorted(set(ref_map.keys()) - set(asr_map.keys()))
+    
+    # 报告未配对的文件
+    if asr_only:
+        print(f"警告: {len(asr_only)} 个ASR文件在标注目录中没有同名文件，将被跳过: "
+              f"{', '.join(asr_only[:5])}{'...' if len(asr_only) > 5 else ''}",
               file=sys.stderr)
+    if ref_only:
+        print(f"警告: {len(ref_only)} 个标注文件在ASR目录中没有同名文件，将被跳过: "
+              f"{', '.join(ref_only[:5])}{'...' if len(ref_only) > 5 else ''}",
+              file=sys.stderr)
+    
+    if not common_names:
+        print("错误: ASR目录与标注目录之间没有同名文件可配对", file=sys.stderr)
+        return []
     
     results = []
     failed_count = 0
-    total = min(len(asr_files), len(ref_files))
+    total = len(common_names)
     
     if output_format != "json":
-        print(f"\n开始批处理，共{total}个文件对...")
+        print(f"\n开始批处理，共{total}个文件对（按文件名配对）...")
         print(f"分词器: {tokenizer}")
         print(f"语气词过滤: {'启用' if filter_fillers else '禁用'}")
         print("-" * 60)
     
-    for i, (asr_file, ref_file) in enumerate(zip(asr_files, ref_files), 1):
+    for i, name in enumerate(common_names, 1):
+        asr_file = asr_map[name]
+        ref_file = ref_map[name]
         if verbose:
             print(f"\n[{i}/{total}] ", end='')
         

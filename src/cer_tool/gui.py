@@ -19,6 +19,7 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, scrolledtext
 import os
 import csv
+from pathlib import Path
 from functools import partial
 import threading
 import queue
@@ -27,6 +28,54 @@ import queue
 from cer_tool.metrics import ASRMetrics
 from cer_tool.tokenizers import get_available_tokenizers, get_tokenizer_info, get_cached_tokenizer_info
 from cer_tool.file_utils import read_file_with_encodings
+
+
+def calculate_overall_accuracy(total_errors: int, total_ref_chars: int) -> float:
+    """
+    计算总体准确率，处理零参考字数边界。
+
+    规则与明细一致：
+    - total_ref_chars > 0: 1 - (total_errors / total_ref_chars)
+    - total_ref_chars == 0 且 total_errors == 0: 1.0
+    - total_ref_chars == 0 且 total_errors > 0: 0.0
+    """
+    if total_ref_chars > 0:
+        return 1.0 - (total_errors / total_ref_chars)
+    return 1.0 if total_errors == 0 else 0.0
+
+
+def build_file_pairs_by_stem(asr_files, ref_files):
+    """
+    按文件名 stem 构建配对关系（与 CLI 语义一致）。
+
+    Returns:
+        tuple:
+            - file_pairs: [(asr_file, ref_file), ...]，按 stem 排序
+            - asr_only: 仅在 ASR 侧出现的 stem 列表
+            - ref_only: 仅在 REF 侧出现的 stem 列表
+            - asr_duplicates: ASR 侧重复 stem 列表
+            - ref_duplicates: REF 侧重复 stem 列表
+    """
+    def _to_map(file_list):
+        file_map = {}
+        duplicates = set()
+        for file_path in file_list:
+            stem = Path(file_path).stem
+            if stem in file_map:
+                duplicates.add(stem)
+                continue
+            file_map[stem] = file_path
+        return file_map, sorted(duplicates)
+
+    asr_map, asr_duplicates = _to_map(asr_files)
+    ref_map, ref_duplicates = _to_map(ref_files)
+
+    common_names = sorted(set(asr_map.keys()) & set(ref_map.keys()))
+    asr_only = sorted(set(asr_map.keys()) - set(ref_map.keys()))
+    ref_only = sorted(set(ref_map.keys()) - set(asr_map.keys()))
+    file_pairs = [(asr_map[name], ref_map[name]) for name in common_names]
+
+    return file_pairs, asr_only, ref_only, asr_duplicates, ref_duplicates
 
 
 class CERAnalysisTool:
@@ -807,27 +856,66 @@ class CERAnalysisTool:
         sorted_asr_files = self.get_file_order(self.asr_canvas)
         sorted_ref_files = self.get_file_order(self.ref_canvas)
 
-        # 验证文件
-        if len(sorted_asr_files) != len(sorted_ref_files):
-            messagebox.showerror("错误", "ASR文件和标注文件数量不匹配！")
-            return
-
         if not sorted_asr_files:
             self.status_var.set("请先选择ASR与标注文件后再计算")
             messagebox.showinfo("提示", "请先选择ASR与标注文件。")
             return
+
+        if not sorted_ref_files:
+            self.status_var.set("请先选择ASR与标注文件后再计算")
+            messagebox.showinfo("提示", "请先选择ASR与标注文件。")
+            return
+
+        # 与 CLI 保持一致：按 stem 同名交集配对
+        file_pairs, asr_only, ref_only, asr_duplicates, ref_duplicates = build_file_pairs_by_stem(
+            sorted_asr_files,
+            sorted_ref_files
+        )
+
+        if asr_duplicates or ref_duplicates:
+            dup_lines = []
+            if asr_duplicates:
+                dup_lines.append(
+                    f"ASR 侧存在重复文件名（不含扩展名）: {', '.join(asr_duplicates[:5])}"
+                    f"{'...' if len(asr_duplicates) > 5 else ''}"
+                )
+            if ref_duplicates:
+                dup_lines.append(
+                    f"标注侧存在重复文件名（不含扩展名）: {', '.join(ref_duplicates[:5])}"
+                    f"{'...' if len(ref_duplicates) > 5 else ''}"
+                )
+            dup_lines.append("请先消除重名后再计算。")
+            self.status_var.set("存在重复文件名，无法自动配对")
+            messagebox.showerror("错误", "\n".join(dup_lines))
+            return
+
+        if not file_pairs:
+            self.status_var.set("没有同名文件可配对")
+            messagebox.showerror("错误", "ASR与标注列表之间没有同名文件可配对！")
+            return
+
+        if asr_only or ref_only:
+            warn_lines = []
+            if asr_only:
+                warn_lines.append(
+                    f"{len(asr_only)} 个ASR文件无同名标注，将跳过: "
+                    f"{', '.join(asr_only[:5])}{'...' if len(asr_only) > 5 else ''}"
+                )
+            if ref_only:
+                warn_lines.append(
+                    f"{len(ref_only)} 个标注文件无同名ASR，将跳过: "
+                    f"{', '.join(ref_only[:5])}{'...' if len(ref_only) > 5 else ''}"
+                )
+            messagebox.showwarning("提示", "\n".join(warn_lines))
 
         # 获取用户设置
         filter_fillers = self.filter_fillers.get()
         tokenizer_name = self.selected_tokenizer.get()
 
         # 配置进度条
-        total_pairs = len(sorted_asr_files)
+        total_pairs = len(file_pairs)
         self.progress_bar.configure(maximum=max(total_pairs, 1))
         self.progress_var.set(0)
-
-        # 准备数据
-        file_pairs = list(zip(sorted_asr_files, sorted_ref_files))
         
         # 清空结果队列
         while not self.result_queue.empty():
@@ -1032,7 +1120,7 @@ class CERAnalysisTool:
             total_hyp_chars = sum(r['asr_chars'] for r in self.results)
             
             total_errors = total_subs + total_dels + total_ins
-            overall_accuracy = 1.0 - (total_errors / total_ref_chars) if total_ref_chars > 0 else 0.0
+            overall_accuracy = calculate_overall_accuracy(total_errors, total_ref_chars)
             
             summary_lines = [
                 f"处理文件对: {len(self.results)}",
