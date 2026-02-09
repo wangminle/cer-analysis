@@ -1,241 +1,257 @@
-# ASR Character Accuracy Comparison Tool
+# ASR字准确率对比工具
 
-A Python-based tool for batch comparing character accuracy rates between ASR (Automatic Speech Recognition) transcription results and standard text, with multi-tokenizer support.
+基于Python的ASR（自动语音识别）字准确率批量对比工具，支持多种中文分词器切换。
 
-## ✨ Core Features
+## ✨ 核心特性
 
-### 🎯 Multi-Tokenizer Support
-- **Jieba Tokenizer**: Default choice, high-speed segmentation, suitable for daily use
-- **THULAC Tokenizer**: Developed by Tsinghua University, high-precision segmentation, suitable for professional analysis
-- **HanLP Tokenizer**: Deep learning model, highest precision, suitable for research environments
+### 🎯 多分词器支持
+- **Jieba分词器**：默认选择，高速分词，适合日常使用
+- **THULAC分词器**：清华大学开发，高精度分词，适合专业分析
+- **HanLP分词器**：深度学习模型，最高精度，适合科研环境
 
-### 🚀 Smart Features
-- ✅ **Automatic Tokenizer Detection**: Detects installed tokenizers at startup
-- ✅ **Smart Fallback Mechanism**: Automatically fallback to jieba when tokenizers are unavailable
-- ✅ **Real-time Status Display**: GUI shows tokenizer status and version information
-- ✅ **Dependency-free Demo**: Complete architecture demonstration without additional dependencies
+### 🚀 智能特性
+- ✅ **自动检测分词器可用性**：启动时检测已安装的分词器
+- ✅ **智能降级机制**：分词器不可用时自动回退到jieba
+- ✅ **实时状态显示**：GUI界面显示分词器状态和版本信息
+- ✅ **无依赖演示**：提供完整的架构演示程序，无需安装额外依赖
 
-### 📊 Advanced Functions
-- Batch import ASR transcription result documents and standard annotation documents
-- Drag-and-drop to establish one-to-one correspondence between ASR results and annotation files
-- Automatically calculate Character Accuracy Rate
-- Count document character information
-- Support exporting statistical results in TXT or CSV format
-- Support multiple text encodings (UTF-8, GBK, GB2312, GB18030, ANSI)
-- **Filler word filtering**: Optional filtering of filler words like "嗯", "啊"
-- **Optimized user interface**: Larger result display area, more user-friendly experience
-- **Asynchronous computation**: Background thread processing with real-time progress updates
-- **Task cancellation**: Cancel long-running calculations at any time
-- **CLI tool**: Command-line interface for batch processing and automation
-- **Preprocessing pipeline**: Modular and configurable text preprocessing system
+### 📊 高级功能
+- 批量导入ASR转写结果文档和标准标注文档
+- 拖拽建立ASR结果和标注文件的一一对应关系
+- 自动计算字准确率（Character Accuracy Rate）
+- 统计文档字数信息
+- 支持导出统计结果为TXT或CSV格式
+- 支持多种文本编码（UTF-8、GBK、GB2312、GB18030、ANSI）
+- **语气词过滤功能**：可选择过滤"嗯"、"啊"等语气词
+- **优化的用户界面**：更大的结果展示区域，更友好的操作体验
+- **异步计算**：后台线程处理，实时进度更新
+- **任务取消**：随时取消长时间运行的计算任务
+- **CLI工具**：命令行界面，支持批处理和自动化
+- **预处理流水线**：模块化、可配置的文本预处理系统
 
-## 📦 Installation & Dependencies
+## 📦 安装与依赖
 
-### Installation
+### 安装方式
 ```bash
-# Install core dependencies
-pip install -r dev/src/requirements.txt
+# 方式一：使用 pipenv（推荐）
+pipenv install              # 安装核心依赖
+pipenv install --dev        # 安装核心 + 开发依赖
 
-# Optional: Install other tokenizers
-pip install thulac    # Install THULAC tokenizer
-pip install hanlp     # Install HanLP tokenizer (large, first use requires model download)
+# 方式二：使用 pip + pyproject.toml
+pip install -e .            # 安装核心依赖（editable 模式）
+pip install -e .[all]       # 安装全部可选分词器
+pip install -e .[dev]       # 安装开发/测试工具
 ```
 
-#### Dependency Description
-**Core Dependencies (Required):**
-- `jieba>=0.42.1`: Default Chinese tokenizer
-- `jiwer>=2.5.0`: Text preprocessing and error rate calculation
-- `pandas>=1.3.0`: Data processing and export
-- `python-Levenshtein>=0.12.2`: Efficient edit distance calculation
+#### 依赖说明
+**核心依赖（必需）：**
+- `jieba>=0.42.1`：默认中文分词器
 
-**Optional Dependencies:**
-- `thulac>=0.2.0`: THULAC high-precision tokenizer
-- `hanlp>=2.1.0`: HanLP deep learning tokenizer
+**推荐依赖：**
+- `python-Levenshtein>=0.12.2`：高效编辑距离计算（内置纯 Python 备选）
 
-## 🎮 Usage
+**可选分词器：**
+- `thulac>=0.2.0`：THULAC 高精度分词器（`pip install -e .[thulac]`）
+- `hanlp>=2.1.0`：HanLP 深度学习分词器（`pip install -e .[hanlp]`）
 
-### 1. GUI Mode (Recommended)
+## 🎮 使用方法
+
+### 1. GUI界面方式（推荐）
 
 ```bash
 python3 dev/src/main_with_tokenizers.py
 ```
 
-#### Operation Steps:
-1. **Select Tokenizer**: Choose the desired tokenizer in the top dropdown
-2. **Check Status**: Confirm tokenizer status shows green ✓, click "Tokenizer Info" for detailed information
-3. **Import Files**:
-   - Left: Click "Select ASR Files" to batch import ASR transcription results
-   - Right: Click "Select Annotation Files" to batch import standard annotation files
-4. **Establish Correspondence**: Adjust file order by drag-and-drop
-5. **Configure Options**: Check "Filter Filler Words" as needed
-6. **Calculate Statistics**: Click "Start Calculation" button
-7. **View Results**: Result table shows detailed statistics, including tokenizer type used
-8. **Export Data**: Click "Export Results" to save as file
+#### 操作步骤：
+1. **选择分词器**：在顶部下拉框中选择所需的分词器
+2. **查看状态**：确认分词器状态显示为绿色✓，点击"分词器信息"查看详细信息
+3. **导入文件**：
+   - 左侧：点击"选择ASR文件"批量导入ASR转写结果
+   - 右侧：点击"选择标注文件"批量导入标准标注文件
+4. **建立对应关系**：通过拖拽调整文件顺序
+5. **配置选项**：根据需要勾选"语气词过滤"
+6. **计算统计**：点击"开始统计"按钮
+7. **查看结果**：结果表格显示详细统计信息，包括使用的分词器类型
+8. **导出数据**：点击"导出结果"保存为文件
 
-#### Interface Function Description:
-- **Tokenizer Selection Area**: Select and manage tokenizers
-- **File Selection Area**: Import and manage file lists
-- **Control Area**: Statistics button and option configuration
-- **Result Display Area**: Detailed statistical result table
+#### 界面功能说明：
+- **分词器选择区域**：选择和管理分词器
+- **文件选择区域**：导入和管理文件列表
+- **控制区域**：统计按钮和选项配置
+- **结果展示区域**：详细的统计结果表格
 
-### 2. CLI Mode (Command Line Interface)
+### 2. CLI模式（命令行界面）
 
 ```bash
-# Single file comparison
+# 单文件对比
 python3 dev/src/cli.py --asr path/to/asr.txt --ref path/to/ref.txt --tokenizer jieba
 
-# Batch processing
+# 批量处理
 python3 dev/src/cli.py --asr-dir path/to/asr_files/ --ref-dir path/to/ref_files/ --output results.csv
 
-# With filler word filtering
+# 启用语气词过滤
 python3 dev/src/cli.py --asr asr.txt --ref ref.txt --filter-fillers --output result.csv
 
-# List available tokenizers
+# 列出可用分词器
 python3 dev/src/cli.py --list-tokenizers
 ```
 
-#### CLI Features:
-- **Single file/Batch processing**: Process one or multiple file pairs
-- **Tokenizer selection**: Choose from available tokenizers
-- **Filler word filtering**: Optional language filler filtering
-- **Export formats**: CSV or TXT output
-- **Automation friendly**: Perfect for CI/CD pipelines
+#### CLI功能特性：
+- **单文件/批处理**：处理单个或多个文件对
+- **分词器选择**：从可用分词器中选择
+- **语气词过滤**：可选的语气词过滤
+- **导出格式**：CSV或TXT输出
+- **自动化友好**：适合CI/CD流水线
 
-### 3. Batch Processing Mode
+### 3. 批量处理模式
 
-For GUI-based batch file processing:
+对于GUI界面的批量文件处理：
 ```bash
 python3 dev/src/main_with_tokenizers.py
 ```
-Then follow the interface operation steps for batch import and processing.
+然后按照界面操作步骤进行批量导入和处理。
 
-## 🎯 Tokenizer Selection Guide
+## 🎯 分词器选择指南
 
-### Jieba Tokenizer
-- **Performance**: ⚡ High Speed
-- **Accuracy**: ⭐⭐⭐ Medium
-- **Use Cases**: Daily batch processing, quick verification
-- **Advantages**: Fast speed, low resource usage, good compatibility
+### Jieba分词器
+- **性能**：⚡ 高速
+- **精度**：⭐⭐⭐ 中等
+- **适用场景**：日常批量处理、快速验证
+- **优势**：速度快、占用资源少、兼容性好
 
-### THULAC Tokenizer
-- **Performance**: ⚡⚡ Medium Speed
-- **Accuracy**: ⭐⭐⭐⭐ High Precision
-- **Use Cases**: Professional analysis, high quality requirements
-- **Advantages**: Developed by Tsinghua University, academic standards, accurate POS tagging
+### THULAC分词器
+- **性能**：⚡⚡ 中等速度
+- **精度**：⭐⭐⭐⭐ 高精度
+- **适用场景**：专业分析、高质量要求
+- **优势**：清华大学开发、学术标准、词性标注准确
 
-### HanLP Tokenizer
-- **Performance**: ⚡ Slower (first use requires model download)
-- **Accuracy**: ⭐⭐⭐⭐⭐ Highest Precision
-- **Use Cases**: Research environments, highest precision requirements
-- **Advantages**: Deep learning models, multi-task support, continuous updates
+### HanLP分词器
+- **性能**：⚡ 较慢（首次使用需下载模型）
+- **精度**：⭐⭐⭐⭐⭐ 最高精度
+- **适用场景**：科研环境、最高精度要求
+- **优势**：深度学习模型、多任务支持、持续更新
 
-## 📐 Character Accuracy Calculation Method
+## 📐 字准确率计算方法
 
-Uses the complement of Character Error Rate (CER):
-
-```
-Character Accuracy = 1 - CER = 1 - (S + D + I) / N
-```
-
-Where:
-- **S**: Number of substitution errors
-- **D**: Number of deletion errors
-- **I**: Number of insertion errors
-- **N**: Total number of characters in the standard text
-
-### 🔧 Improved Calculation Process
-
-1. **Tokenization Preprocessing**: Use selected tokenizer for text segmentation
-2. **Text Normalization**: Process full/half-width characters, unify numerical expressions
-3. **Filler Word Filtering (Optional)**: Filter filler words like "嗯", "啊", "呢"
-4. **Character Position Localization**: Precisely locate each character's position in original text
-5. **Edit Distance Calculation**: Use Levenshtein distance algorithm
-6. **Error Analysis**: Identify substitution, deletion, insertion errors with visualization
-
-## 📁 Project Structure
+使用字符错误率（CER）的补集：
 
 ```
-cer-matchingtools/
-├── dev/
-│   ├── src/                           # 🧠 Core source code
-│   │   ├── text_tokenizers/           # Tokenizer module
-│   │   │   ├── __init__.py            # Module export interface
-│   │   │   └── tokenizers/            # Tokenizer implementations
-│   │   │       ├── base.py            # Abstract base class
-│   │   │       ├── factory.py         # Factory class
-│   │   │       ├── jieba_tokenizer.py # Jieba implementation
-│   │   │       ├── thulac_tokenizer.py# THULAC implementation
-│   │   │       └── hanlp_tokenizer.py # HanLP implementation
-│   │   ├── main_with_tokenizers.py    # 🎨 GUI interface main program
-│   │   ├── asr_metrics_refactored.py  # 📊 Calculation engine
-│   │   └── requirements.txt           # 📦 Dependency management
-│   └── output/                        # Development output files
-├── docs/                              # 📚 Technical documentation
-├── tests/                             # 🧪 Test files and scripts
-├── release/                           # 📦 Release packages
-├── ref/                               # 📋 Reference materials
-│   ├── demo/                          # Example files
-│   └── logo/                          # Project logo
-└── README.md                          # 📋 Project description
+字准确率 = 1 - CER = 1 - (S + D + I) / N
 ```
 
-## 🔧 Troubleshooting
+其中：
+- **S**：替换错误数
+- **D**：删除错误数  
+- **I**：插入错误数
+- **N**：标准文本中的字符总数
 
-### Common Issues
+### 🔧 改进的计算流程
 
-**Q: How to handle unavailable tokenizers?**
-A: Check if corresponding dependencies are installed:
+1. **分词预处理**：使用选定的分词器进行文本分词
+2. **文本标准化**：处理全/半角字符、统一数字表达
+3. **语气词过滤（可选）**：过滤"嗯"、"啊"、"呢"等语气词
+4. **字符位置定位**：精确定位每个字符在原文中的位置
+5. **编辑距离计算**：使用Levenshtein距离算法
+6. **错误分析**：识别替换、删除、插入错误并提供可视化
+
+## 📁 项目结构
+
+```
+cer-analysis/                            # 项目根目录
+├── src/                                 # 🧠 正式源码目录
+│   └── cer_tool/                        # Python 包
+│       ├── __init__.py                  # 包元数据 + 兼容性包装
+│       ├── __main__.py                  # python -m cer_tool 入口
+│       ├── metrics.py                   # 📊 CER 指标计算引擎
+│       ├── cli.py                       # 💻 CLI 命令行接口
+│       ├── gui.py                       # 🎨 GUI 图形界面（tkinter）
+│       ├── preprocessing.py             # 🔄 预处理流水线
+│       ├── file_utils.py                # 📂 公共文件工具
+│       └── tokenizers/                  # 分词器模块
+│           ├── base.py                  # 抽象基类
+│           ├── factory.py               # 工厂类（单例 + 缓存）
+│           ├── jieba_tokenizer.py       # Jieba 实现
+│           ├── thulac_tokenizer.py      # THULAC 实现
+│           └── hanlp_tokenizer.py       # HanLP 实现
+│
+├── tests/                               # 🧪 测试目录（127 项 pytest 用例）
+│   ├── pytest.ini                       # pytest 配置
+│   ├── test_boundary.py                 # 边界条件测试（20 用例）
+│   ├── test_cli.py                      # CLI 工具测试（14 用例）
+│   ├── test_preprocessing.py            # 预处理流水线测试（25 用例）
+│   ├── test_core_metrics.py             # 核心指标计算测试（33 用例）
+│   ├── test_tokenizers_unit.py          # 分词器单元测试（23 用例）
+│   ├── test_with_pytest_marks.py        # V1 遗留集成测试（12 用例）
+│   └── reports/                         # 📋 测试报告与策略文档
+│
+├── docs/                                # 📚 项目文档
+├── dev/                                 # 🛠 开发辅助目录
+├── assets/                              # 🎨 静态资源
+├── release/                             # 📦 发布产物
+├── ref/                                 # 📋 参考资料（只读）
+├── pyproject.toml                       # 包定义 + 依赖分层
+├── CLAUDE.md                            # 项目知识库（AI 助手上下文）
+└── README.md                            # 项目说明
+```
+
+## 🔧 故障排除
+
+### 常见问题
+
+**Q: 分词器显示不可用怎么办？**
+A: 检查对应依赖是否安装：
 ```bash
-pip install thulac    # Install THULAC
-pip install hanlp     # Install HanLP
+pip install thulac    # 安装THULAC
+pip install hanlp     # 安装HanLP
 ```
 
-**Q: Why is HanLP slow on first use?**
-A: HanLP needs to download deep learning models, first use requires patience. Recommend using in good network environment.
+**Q: HanLP首次使用很慢？**
+A: HanLP需要下载深度学习模型，首次使用需要耐心等待。建议在网络良好的环境下使用。
 
-**Q: How to quickly verify functionality?**
-A: Use sample files in the ref/demo directory for testing:
+**Q: 如何快速验证功能？**
+A: 使用ref/demo目录中的示例文件测试：
 ```bash
-# Use GUI interface to import sample files from ref/demo directory for testing
+# 使用GUI界面导入ref/demo目录中的示例文件进行测试
 python3 dev/src/main_with_tokenizers.py
 ```
 
-**Q: How to choose the right tokenizer?**
-A: Refer to tokenizer selection guide, choose based on speed and accuracy needs:
-- For speed: Choose Jieba
-- For balance: Choose THULAC
-- For precision: Choose HanLP
+**Q: 如何选择合适的分词器？**
+A: 参考分词器选择指南，根据速度和精度需求选择：
+- 追求速度：选择Jieba
+- 平衡性能：选择THULAC  
+- 追求精度：选择HanLP
 
-## 🆕 Version Features
+## 🆕 版本特性
 
-### Current Version Highlights
-- 🎯 **Multi-tokenizer Architecture**: Support for three mainstream Chinese tokenizers
-- 🚀 **Smart Switching**: Automatic detection and graceful fallback
-- 🎨 **Optimized Interface**: More user-friendly experience with async processing
-- 📊 **Detailed Statistics**: Enhanced result display and analysis
-- 🔧 **Drag-and-Drop Sorting**: Intuitive file correspondence management
-- ⚡ **Asynchronous GUI**: Non-blocking interface with background computation
-- 🎯 **Task Control**: Real-time progress updates and cancellation support
-- 💻 **CLI Tool**: Professional command-line interface for automation
-- 🔄 **Preprocessing Pipeline**: Flexible and modular text preprocessing
-- 🧪 **Layered Testing**: pytest-based testing strategy with selective execution
+### 当前版本亮点
+- 🎯 **多分词器架构**：支持三种主流中文分词器
+- 🚀 **智能切换**：自动检测和优雅降级
+- 🎨 **优化界面**：异步处理，更友好的用户体验
+- 📊 **详细统计**：增强的结果展示和分析
+- 🔧 **拖拽排序**：直观的文件对应关系管理
+- ⚡ **异步GUI**：后台线程计算，界面不卡顿
+- 🎯 **任务控制**：实时进度更新和取消功能
+- 💻 **CLI工具**：专业的命令行界面，支持自动化
+- 🔄 **预处理流水线**：灵活、模块化的文本预处理
+- 🧪 **分层测试**：基于pytest的127项测试用例，reports/scripts/归档三层分离
 
-### Backward Compatibility
-- ✅ Maintain original API interfaces unchanged
-- ✅ Default to jieba tokenizer
-- ✅ Support original file formats and encodings
+### 向后兼容
+- ✅ 保持原有API接口不变
+- ✅ 默认使用jieba分词器
+- ✅ 支持原有文件格式和编码
 
-## 📞 Technical Support
+## 📞 技术支持
 
-For issues, please check:
-- `ref/demo/` directory - Contains sample files for testing
-- `docs/` directory - Detailed technical documentation
-- `dev/src/requirements.txt` - Complete dependency list
+如有问题，请查看：
+- `ref/demo/` 目录 - 包含示例文件用于测试
+- `docs/` 目录 - 详细的技术文档
+- `tests/reports/` 目录 - 测试报告与测试策略
+- `pyproject.toml` - 完整的依赖配置
 
-## 📄 License
+## 📄 许可证
 
-This project is released under an open source license, see `LICENSE` file for details.
+本项目基于开源许可证发布，详见 `LICENSE` 文件。
 
 ---
 
-🎉 **Experience multi-tokenizer switching now to improve ASR character accuracy analysis precision and efficiency!** 
+🎉 **立即体验多分词器切换功能，提升ASR字准确率分析的精度和效率！** 

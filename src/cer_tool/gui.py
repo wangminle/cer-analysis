@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-ASR字准确率对比工具 - 主程序
+CER Analysis Tool - GUI 主程序
 支持多种分词器的图形界面应用程序
 
 功能特性：
@@ -11,8 +11,8 @@ ASR字准确率对比工具 - 主程序
 - 结果导出为TXT/CSV格式
 - 多编码格式支持
 
-作者：CER-MatchingTools项目组
-版本：V1.0
+作者：CER-Analysis-Tool 项目组
+版本：V2.0
 """
 
 import tkinter as tk
@@ -29,9 +29,9 @@ from cer_tool.tokenizers import get_available_tokenizers, get_tokenizer_info, ge
 from cer_tool.file_utils import read_file_with_encodings
 
 
-class ASRComparisonTool:
+class CERAnalysisTool:
     """
-    ASR字准确率对比工具主类
+    CER 字准确率分析工具主类（V2.0 新名称，原 ASRComparisonTool）
     
     提供图形用户界面，支持多种分词器的字准确率计算工具
     主要功能包括：
@@ -50,7 +50,7 @@ class ASRComparisonTool:
         """
         # 主窗口设置
         self.root = root
-        self.root.title("ASR字准确率对比工具 - 多分词器版本")
+        self.root.title("CER Analysis Tool - 多分词器版本")
         self.root.geometry("800x650")  # 增加一些高度以容纳分词器选择
         # 设置窗口大小可调整，支持最大化
         self.root.resizable(True, True)
@@ -1139,5 +1139,36 @@ if __name__ == "__main__":
     创建主窗口并启动应用程序
     """
     root = tk.Tk()
-    app = ASRComparisonTool(root)
+    app = CERAnalysisTool(root)
     root.mainloop()
+
+
+# ---------------------------------------------------------------------------
+# 向后兼容别名（V2.0.x 过渡期保留，V2.1.0 移除）
+# 覆盖 from cer_tool.gui import ASRComparisonTool 场景
+# ---------------------------------------------------------------------------
+
+def _make_deprecated_alias(new_cls, old_name):
+    """创建带 DeprecationWarning 的旧类名别名"""
+    import warnings
+
+    class _Alias(new_cls):
+        def __init_subclass__(cls, **kw):
+            super().__init_subclass__(**kw)
+
+        def __init__(self, *args, **kwargs):
+            warnings.warn(
+                f"{old_name} 已更名为 {new_cls.__name__}，"
+                f"请使用 from cer_tool.gui import {new_cls.__name__}。"
+                f"旧名称将在 V2.1.0 中移除。",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+            super().__init__(*args, **kwargs)
+
+    _Alias.__name__ = old_name
+    _Alias.__qualname__ = old_name
+    return _Alias
+
+
+ASRComparisonTool = _make_deprecated_alias(CERAnalysisTool, "ASRComparisonTool")

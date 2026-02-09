@@ -17,10 +17,10 @@ def main():
     else:
         # 无参数，启动 GUI
         import tkinter as tk
-        from cer_tool.gui import ASRComparisonTool
+        from cer_tool.gui import CERAnalysisTool
         
         root = tk.Tk()
-        app = ASRComparisonTool(root)
+        app = CERAnalysisTool(root)
         root.mainloop()
 
 

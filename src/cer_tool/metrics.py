@@ -1,6 +1,6 @@
 """
-重构后的ASRMetrics类
-支持多种分词器的字准确率计算引擎
+CER Analysis Tool - 字准确率计算引擎
+支持多种分词器的 CER 指标计算模块
 
 V2 变更：
 - 预处理流水线集成（替代 jiwer 预处理调用）
@@ -25,7 +25,7 @@ from cer_tool.preprocessing import (
 
 class ASRMetrics:
     """
-    ASR字准确率计算类
+    CER 字准确率计算引擎
     支持多种分词器：jieba、THULAC、HanLP
     """
     
